@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "../.."
+		},
+		{
+			"path": "../../../grocy-ng"
+		},
+		{
+			"path": "../../../barcodebuddy"
+		},
+		{
+			"path": "../../../cursor-command"
+		}
+	],
+	"settings": {}
+}

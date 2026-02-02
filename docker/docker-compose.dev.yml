@@ -1,0 +1,41 @@
+# GrocyScan Development Docker Compose
+# Usage: docker compose -f docker/docker-compose.dev.yml up -d
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: grocyscan-postgres-dev
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=grocyscan
+      - POSTGRES_PASSWORD=grocyscan
+      - POSTGRES_DB=grocyscan
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U grocyscan"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: grocyscan-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-dev-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-dev-data:
+  redis-dev-data:

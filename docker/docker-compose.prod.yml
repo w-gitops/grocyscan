@@ -1,0 +1,81 @@
+# GrocyScan Production Docker Compose Configuration
+# Uses pre-built image from GitHub Container Registry
+#
+# Usage:
+#   1. Create a .env file with your configuration (copy from .env.example)
+#   2. Set GROCYSCAN_IMAGE to your GHCR image path, e.g.:
+#      GROCYSCAN_IMAGE=ghcr.io/yourusername/grocyscan:latest
+#   3. Run: docker compose -f docker/docker-compose.prod.yml up -d
+#
+# To authenticate with GHCR (private repos):
+#   echo $GITHUB_PAT | docker login ghcr.io -u USERNAME --password-stdin
+
+version: "3.8"
+
+services:
+  app:
+    image: ${GROCYSCAN_IMAGE:-ghcr.io/OWNER/grocyscan:latest}
+    container_name: grocyscan
+    restart: unless-stopped
+    ports:
+      - "3334:3334"
+    environment:
+      - GROCYSCAN_ENV=production
+      - GROCYSCAN_DEBUG=false
+      - DATABASE_URL=postgresql+asyncpg://grocyscan:${POSTGRES_PASSWORD:-grocyscan}@postgres:5432/grocyscan
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - ../.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - grocyscan-network
+    volumes:
+      - grocyscan-data:/app/data
+      - grocyscan-logs:/app/logs
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: grocyscan-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=grocyscan
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-grocyscan}
+      - POSTGRES_DB=grocyscan
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - grocyscan-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U grocyscan"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: grocyscan-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - grocyscan-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+networks:
+  grocyscan-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  grocyscan-data:
+  grocyscan-logs:

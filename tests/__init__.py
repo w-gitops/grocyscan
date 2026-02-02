@@ -1,0 +1,1 @@
+"""GrocyScan test suite."""
