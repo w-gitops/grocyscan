@@ -187,12 +187,13 @@ def create_app() -> FastAPI:
     # Configure NiceGUI
     configure_nicegui()
 
-    # Integrate NiceGUI with FastAPI
+    # Integrate NiceGUI with FastAPI (storage_secret enables app.storage.user for e.g. recent scans)
     from nicegui import ui
     ui.run_with(
         app,
         title="GrocyScan",
         favicon="🛒",
+        storage_secret=settings.grocyscan_secret_key.get_secret_value(),
     )
 
     return app

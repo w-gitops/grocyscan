@@ -1,5 +1,6 @@
 """NiceGUI application entry point."""
 
+from fastapi import Request
 from nicegui import app, ui
 
 from app.core.logging import get_logger
@@ -47,9 +48,9 @@ def configure_nicegui() -> None:
         await jobs.render()
 
     @ui.page("/logs")
-    async def logs_page() -> None:
+    async def logs_page(request: Request) -> None:
         """Log viewer page."""
-        await logs.render()
+        await logs.render(request)
 
     @ui.page("/settings")
     async def settings_page() -> None:

@@ -88,8 +88,9 @@ class ProductReviewPopup:
 
                     # Basic info
                     with ui.column().classes("flex-grow"):
-                        barcode = self._product_data.get("barcode", "Unknown")
-                        ui.label(f"Barcode: {barcode}").classes("text-gray-500")
+                        barcode = self._product_data.get("barcode")
+                        barcode_display = barcode if barcode else "—"
+                        ui.label(f"Barcode: {barcode_display}").classes("text-gray-500")
 
                         lookup_provider = self._product_data.get("lookup_provider")
                         if lookup_provider:
@@ -177,6 +178,7 @@ class ProductReviewPopup:
             "name": self._name_input.value,
             "category": self._category_input.value if self._category_input else None,
             "quantity": int(self._quantity_input.value) if self._quantity_input else 1,
+            "location_code": self._product_data.get("location_code"),
             "best_before": self._date_picker.value if self._date_picker else None,
             "price": float(self._price_input.value) if self._price_input and self._price_input.value else None,
             "notes": self._notes_input.value if self._notes_input else None,
@@ -190,8 +192,10 @@ class ProductReviewPopup:
         if inspect.iscoroutine(result):
             await result
 
-    def _handle_cancel(self) -> None:
+    async def _handle_cancel(self) -> None:
         """Handle cancel button click."""
         self.close()
         if self.on_cancel:
-            self.on_cancel()
+            result = self.on_cancel()
+            if inspect.iscoroutine(result):
+                await result

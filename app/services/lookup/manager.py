@@ -245,6 +245,56 @@ class LookupManager:
         results.sort(key=score_result, reverse=True)
         return results[0]
 
+    async def search_by_name(self, query: str, limit: int = 20) -> list[LookupResult]:
+        """Search for products by name across providers (OpenFoodFacts, Brave).
+
+        Queries enabled providers that support name search and merges results.
+
+        Args:
+            query: Product name or search terms
+            limit: Max results to return
+
+        Returns:
+            list[LookupResult]: Merged results from all providers
+        """
+        if not query or len(query.strip()) < 2:
+            return []
+        query = query.strip()
+        results: list[LookupResult] = []
+        seen_names: set[str] = set()
+
+        # OpenFoodFacts and Brave support search_by_name
+        async def off_search() -> list[LookupResult]:
+            if "openfoodfacts" in self.providers:
+                return await self.providers["openfoodfacts"].search_by_name(
+                    query, limit
+                )
+            return []
+
+        async def brave_search() -> list[LookupResult]:
+            if "brave" in self.providers:
+                return await self.providers["brave"].search_by_name(query, limit)
+            return []
+
+        try:
+            off_results, brave_results = await asyncio.gather(
+                off_search(), brave_search()
+            )
+            for r in off_results + brave_results:
+                if not r.found or not r.name:
+                    continue
+                key = r.name.lower().strip()[:80]
+                if key in seen_names:
+                    continue
+                seen_names.add(key)
+                results.append(r)
+                if len(results) >= limit:
+                    break
+        except Exception as e:
+            logger.warning("search_by_name failed", query=query, error=str(e))
+
+        return results[:limit]
+
     async def health_check(self) -> dict[str, bool]:
         """Check health of all providers.
 

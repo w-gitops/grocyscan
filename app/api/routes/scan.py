@@ -8,6 +8,8 @@ from fastapi import APIRouter, Request
 from app.core.logging import get_logger
 from app.schemas.scan import (
     ProductInfo,
+    ScanByProductRequest,
+    ScanByProductResponse,
     ScanConfirmRequest,
     ScanConfirmResponse,
     ScanRequest,
@@ -140,6 +142,57 @@ async def scan_barcode(request: Request, scan_request: ScanRequest) -> ScanRespo
     )
 
 
+@router.post("/by-product", response_model=ScanByProductResponse)
+async def scan_by_product(
+    request: ScanByProductRequest,
+) -> ScanByProductResponse:
+    """Create a scan session from a product selected by name search.
+
+    Used when the user adds inventory via product name search instead of barcode.
+    Returns a scan_id that can be used with the confirm endpoint.
+    """
+    scan_id = uuid.uuid4()
+    grocy_product = None
+    if request.grocy_product_id:
+        grocy_product = await grocy_client.get_product(request.grocy_product_id)
+        if not grocy_product:
+            grocy_product = {"id": request.grocy_product_id}
+
+    product_info = ProductInfo(
+        name=request.name,
+        category=request.category,
+        image_url=request.image_url,
+        grocy_product_id=request.grocy_product_id,
+        is_new=request.grocy_product_id is None,
+    )
+
+    _scan_sessions[str(scan_id)] = {
+        "barcode": None,
+        "barcode_type": "PRODUCT",
+        "product": product_info.model_dump(),
+        "lookup_result": None,
+        "grocy_product": grocy_product,
+        "location_code": request.location_code,
+        "input_method": "name_search",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    logger.info(
+        "Scan session created from product search",
+        name=request.name,
+        grocy_product_id=request.grocy_product_id,
+    )
+
+    return ScanByProductResponse(
+        scan_id=scan_id,
+        name=request.name,
+        category=request.category,
+        image_url=request.image_url,
+        location_code=request.location_code,
+        existing_in_grocy=request.grocy_product_id is not None,
+    )
+
+
 @router.post("/{scan_id}/confirm", response_model=ScanConfirmResponse)
 async def confirm_scan(scan_id: str, confirm: ScanConfirmRequest) -> ScanConfirmResponse:
     """Confirm and add scanned product to inventory.
@@ -180,8 +233,8 @@ async def confirm_scan(scan_id: str, confirm: ScanConfirmRequest) -> ScanConfirm
                 )
                 grocy_product_id = created.get("created_object_id") or created.get("id")
 
-                # Add barcode to product
-                if grocy_product_id:
+                # Add barcode to product (only if we have a barcode, e.g. not from name search)
+                if grocy_product_id and barcode:
                     await grocy_client.add_barcode_to_product(grocy_product_id, barcode)
 
             # Add stock

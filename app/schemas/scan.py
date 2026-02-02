@@ -47,6 +47,27 @@ class ScanResponse(BaseModel):
     fuzzy_matches: list[ProductInfo] = []
 
 
+class ScanByProductRequest(BaseModel):
+    """Request to start a scan session from a product selected by name search."""
+
+    grocy_product_id: int | None = Field(None, description="Existing Grocy product ID")
+    name: str = Field(..., min_length=1, max_length=500)
+    category: str | None = None
+    image_url: str | None = None
+    location_code: str | None = None
+
+
+class ScanByProductResponse(BaseModel):
+    """Response from starting a scan by product selection."""
+
+    scan_id: UUID
+    name: str
+    category: str | None = None
+    image_url: str | None = None
+    location_code: str | None = None
+    existing_in_grocy: bool = False
+
+
 class ScanConfirmRequest(BaseModel):
     """Request to confirm and add a scanned product."""
 

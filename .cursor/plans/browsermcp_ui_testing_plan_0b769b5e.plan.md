@@ -493,6 +493,28 @@ async def test_scan_page():
 
 ---
 
+## Scanner Gun Mode – Browser Test Procedure
+
+When validating **Scanner Gun Mode** (USB/Bluetooth barcode scanner optimization):
+
+1. **Navigate** to `/scan`.
+2. **Enable Scanner Gun Mode** by clicking the toggle button (crop_free icon) so the barcode input keeps focus after submit.
+3. **Ensure focus** is on the barcode input (e.g. element ref `e56` or the barcode input in snapshot) before simulating a scan.
+4. **Simulate scan**: type barcode `3017620422003` (e.g. Nutella) into the barcode input and press Enter.
+5. **Verify**: "Product found" feedback appears and the **Review Product** dialog opens with product details.
+6. **Verify focus**: after closing the dialog (or cancelling), if Scanner Gun Mode is still on, focus should return to the barcode input for the next scan.
+
+Use `browser_snapshot` before/after to confirm input refs and dialog visibility.
+
+---
+
+## Known Issues / UI Notes
+
+- **Images in Review dialog**: Product images are **not** currently shown in the scan Review Product dialog. Lookup results may not include `image_url`, or the review popup does not render it; treat as a known limitation until implemented.
+- **Products popup (Grocy) – no UPC**: The product detail popup on the **Products** page (`/products`) shows Grocy product fields (name, description, location, quantity, unit, calories, etc.) but **does not show UPC/barcode**. Barcodes in Grocy live in a separate product_barcodes API; the detail popup does not fetch or display them. Consider adding barcode(s) to the product detail popup in a future change.
+
+---
+
 ## Key Files Referenced
 
 - `[app/ui/app.py](app/ui/app.py)` - Route definitions

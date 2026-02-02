@@ -2,6 +2,13 @@
 
 Lessons learned from previous iterations. Read this FIRST before starting work.
 
+## Known UI Limitations (documented, not bugs)
+
+- **Review dialog**: Product images are not shown in the scan Review Product dialog (lookup may not return image_url, or UI does not render it).
+- **Products page detail popup**: Grocy product detail popup does not show UPC/barcode; barcodes are in Grocy’s product_barcodes API and are not yet fetched or displayed there.
+
+See `.cursor/plans/browsermcp_ui_testing_plan_*.plan.md` for Scanner Gun Mode test procedure and known issues.
+
 ## Active Guardrails
 
 <!-- Add lessons learned here in this format:
