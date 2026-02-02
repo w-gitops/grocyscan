@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2-alpha] - 2026-02-02
+
+### Added
+
+- **Locations Page** - Full implementation fetching and displaying locations from Grocy
+  - Shows sync status with location count
+  - Displays location cards with freezer indicators
+  - "Sync Now" button to refresh from Grocy
+
+- **Products Page** - Full implementation fetching and displaying products from Grocy
+  - Search/filter functionality
+  - Displays product list with name, description, location, and ID
+  - Refresh button to reload from Grocy
+
+- **Dynamic Version Display** - Version now reads from `pyproject.toml` (single source of truth)
+
+### Fixed
+
+- **Grocy Client Settings** - Now reads settings dynamically from `settings_service` instead of static environment variables (hot-reload support)
+- **Grocy Product Creation** - Removed unsupported `qu_factor_purchase_to_stock` field for Grocy 4.x compatibility
+- **Review Popup Async** - `_handle_confirm` now properly awaits async callbacks (fixes Recent Scans not updating)
+- **Products Page Null Safety** - Fixed `'NoneType' object is not subscriptable` error for products with null descriptions
+
 ## [0.3.1-alpha] - 2026-02-02
 
 ### Added

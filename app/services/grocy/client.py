@@ -11,6 +11,28 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 
+def _get_grocy_settings() -> tuple[str, str, int]:
+    """Get Grocy settings, preferring settings_service over environment.
+    
+    Returns:
+        Tuple of (api_url, api_key, timeout)
+    """
+    try:
+        from app.services.settings import settings_service
+        grocy = settings_service.get_section("grocy")
+        api_url = grocy.api_url or settings.grocy_api_url
+        api_key = grocy.api_key or settings.grocy_api_key.get_secret_value()
+        timeout = settings.grocy_timeout_seconds
+        return api_url.rstrip("/"), api_key, timeout
+    except Exception:
+        # Fallback to environment settings
+        return (
+            settings.grocy_api_url.rstrip("/"),
+            settings.grocy_api_key.get_secret_value(),
+            settings.grocy_timeout_seconds,
+        )
+
+
 class GrocyClient:
     """Client for the Grocy REST API.
 
@@ -19,9 +41,26 @@ class GrocyClient:
     """
 
     def __init__(self) -> None:
-        self.api_url = settings.grocy_api_url.rstrip("/")
-        self.api_key = settings.grocy_api_key.get_secret_value()
-        self.timeout = settings.grocy_timeout_seconds
+        # Settings are read dynamically in each request via properties
+        pass
+
+    @property
+    def api_url(self) -> str:
+        """Get API URL dynamically from settings."""
+        api_url, _, _ = _get_grocy_settings()
+        return api_url
+
+    @property
+    def api_key(self) -> str:
+        """Get API key dynamically from settings."""
+        _, api_key, _ = _get_grocy_settings()
+        return api_key
+
+    @property
+    def timeout(self) -> int:
+        """Get timeout dynamically from settings."""
+        _, _, timeout = _get_grocy_settings()
+        return timeout
 
     @property
     def headers(self) -> dict[str, str]:
@@ -171,13 +210,13 @@ class GrocyClient:
         Returns:
             dict: Created product data
         """
+        # Minimal required fields for Grocy 4.x
         data = {
             "name": name,
             "description": description or "",
             "location_id": location_id or 1,
             "qu_id_purchase": quantity_unit_id or 1,
             "qu_id_stock": quantity_unit_id or 1,
-            "qu_factor_purchase_to_stock": 1,
             **kwargs,
         }
 

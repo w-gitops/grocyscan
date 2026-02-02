@@ -4,61 +4,61 @@ overview: A comprehensive BrowserMCP-based testing plan to verify all UI functio
 todos:
   - id: auth-tests
     content: Execute Authentication Tests (AUTH-01 through AUTH-07)
-    status: pending
+    status: completed
   - id: nav-tests
     content: Execute Navigation Tests - Header and Mobile (NAV-01 through NAV-12)
-    status: pending
+    status: completed
   - id: scan-page-tests
     content: Execute Scan Page Tests (SCAN-01 through SCAN-10)
-    status: pending
+    status: completed
   - id: products-page-tests
     content: Execute Products Page Tests (PROD-01 through PROD-06)
-    status: pending
+    status: completed
   - id: locations-page-tests
     content: Execute Locations Page Tests (LOC-01 through LOC-04)
-    status: pending
+    status: completed
   - id: jobs-page-tests
     content: Execute Jobs Page Tests (JOB-01 through JOB-07)
-    status: pending
+    status: completed
   - id: logs-page-tests
     content: Execute Logs Page Tests (LOG-01 through LOG-07)
-    status: pending
+    status: completed
   - id: settings-grocy-tests
     content: Execute Settings Grocy Tab Tests (SET-G01 through SET-G08)
-    status: pending
+    status: completed
   - id: settings-llm-tests
     content: Execute Settings LLM Tab Tests (SET-L01 through SET-L06)
-    status: pending
+    status: completed
   - id: settings-lookup-tests
     content: Execute Settings Lookup Tab Tests (SET-K01 through SET-K07)
-    status: pending
+    status: completed
   - id: settings-scanning-tests
     content: Execute Settings Scanning Tab Tests (SET-S01 through SET-S07)
-    status: pending
+    status: completed
   - id: settings-ui-tests
     content: Execute Settings UI Tab Tests (SET-U01 through SET-U06)
-    status: pending
+    status: completed
   - id: component-scanner-tests
     content: Execute Barcode Scanner Component Tests (CMP-S01 through CMP-S05)
-    status: pending
+    status: completed
   - id: component-review-tests
     content: Execute Product Review Popup Tests (CMP-R01 through CMP-R17)
-    status: pending
+    status: completed
   - id: component-datepicker-tests
     content: Execute Touch Date Picker Tests (CMP-D01 through CMP-D10)
-    status: pending
+    status: completed
   - id: component-feedback-tests
     content: Execute Scan Feedback Component Tests (CMP-F01 through CMP-F04)
-    status: pending
+    status: completed
   - id: responsive-tests
     content: Execute Responsive Design Tests at Mobile/Tablet/Desktop (RSP-01 through RSP-04)
-    status: pending
+    status: completed
   - id: theme-tests
     content: Execute Theme Tests for Light/Dark/Auto modes (THM-01 through THM-05)
-    status: pending
+    status: completed
   - id: notification-tests
     content: Execute Notification/Toast Tests (NOT-01 through NOT-04)
-    status: pending
+    status: completed
 isProject: false
 ---
 

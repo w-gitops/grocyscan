@@ -1,5 +1,6 @@
 """Product review popup component."""
 
+import inspect
 from datetime import date
 from typing import Any, Callable
 
@@ -165,7 +166,7 @@ class ProductReviewPopup:
                         "color=primary"
                     )
 
-    def _handle_confirm(self) -> None:
+    async def _handle_confirm(self) -> None:
         """Handle confirm button click."""
         if not self._name_input or not self._name_input.value:
             ui.notify("Product name is required", type="warning")
@@ -184,7 +185,10 @@ class ProductReviewPopup:
         }
 
         self.close()
-        self.on_confirm(form_data)
+        # Handle both sync and async callbacks
+        result = self.on_confirm(form_data)
+        if inspect.iscoroutine(result):
+            await result
 
     def _handle_cancel(self) -> None:
         """Handle cancel button click."""
