@@ -1,5 +1,7 @@
 # 13. Project Standards
 
+> **See Also:** [Standards of Development](00-Standards-of-Development.md) for the development methodology (Ralph Wiggum protocol) and consolidated reference for AI agents.
+
 ## 13.1 Standards Directory Structure
 
 ```

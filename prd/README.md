@@ -1,6 +1,6 @@
 # GrocyScan Product Requirements Document
 
-**Version:** 1.2  
+**Version:** 1.3  
 **Date:** February 2, 2026  
 **Status:** Final Draft - Ready for Implementation
 
@@ -18,6 +18,7 @@ This PRD is organized into the following sections for easier comprehension:
 
 | # | Document | Description |
 |---|----------|-------------|
+| 0 | [Standards of Development](00-Standards-of-Development.md) | Development methodology, quality standards, and tooling |
 | 1 | [Executive Summary](01-executive-summary.md) | Vision, goals, success metrics, and user personas |
 | 2 | [User Stories](02-user-stories.md) | Complete user stories organized by feature area |
 | 3 | [Functional Requirements](03-functional-requirements.md) | Detailed functional requirements |
@@ -76,6 +77,7 @@ This PRD is organized into the following sections for easier comprehension:
 | 1.0 | 2026-02-02 | Initial PRD creation |
 | 1.1 | 2026-02-02 | Added Appendix A (API Docs), B (MCP Server) |
 | 1.2 | 2026-02-02 | Added Appendix E (Documentation), F (n8n Integration) |
+| 1.3 | 2026-02-02 | Added Section 0 (Standards of Development) |
 
 ---
 

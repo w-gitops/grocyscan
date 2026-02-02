@@ -1,15 +1,18 @@
 #!/bin/bash
 # Ralph Wiggum Common Functions
+# With MCP Browser Tool Support
 
 # Configuration
 MAX_ITERATIONS=${MAX_ITERATIONS:-20}
 RALPH_MODEL=${RALPH_MODEL:-"claude-sonnet-4-20250514"}
+BROWSER_VALIDATION=${BROWSER_VALIDATION:-false}
 
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Get script directory
@@ -21,7 +24,7 @@ cd "$PROJECT_DIR" || exit 1
 
 # Initialize Ralph state directory
 init_ralph_state() {
-    mkdir -p .ralph
+    mkdir -p .ralph/screenshots
     
     # Create progress.md if missing
     if [[ ! -f .ralph/progress.md ]]; then
@@ -37,6 +40,10 @@ This file tracks what has been accomplished across iterations.
 ## Completed Criteria
 
 <!-- Move criteria here when done -->
+
+## Browser Validations
+
+<!-- Screenshots and UI validation results -->
 
 ## Current Focus
 
@@ -54,6 +61,10 @@ Lessons learned from previous iterations. Read this FIRST before starting work.
 ## Active Guardrails
 
 <!-- Add lessons learned here -->
+
+## Resolved Guardrails
+
+<!-- Move fixed guardrails here -->
 EOF
     fi
     
@@ -63,6 +74,23 @@ EOF
     
     # Initialize iteration counter
     echo "0" > .ralph/.iteration
+    
+    # Check for browser validation in task
+    if [[ -f RALPH_TASK.md ]]; then
+        if grep -q "browser_validation: true" RALPH_TASK.md 2>/dev/null; then
+            BROWSER_VALIDATION=true
+            echo -e "${CYAN}Browser validation enabled${NC}"
+        fi
+    fi
+}
+
+# Check if browser validation is needed
+check_browser_validation() {
+    if [[ -f RALPH_TASK.md ]]; then
+        grep -q "browser_validation: true" RALPH_TASK.md 2>/dev/null
+        return $?
+    fi
+    return 1
 }
 
 # Check if task is complete
@@ -99,7 +127,21 @@ increment_iteration() {
 
 # Build the prompt for the agent
 build_prompt() {
-    cat << 'EOF'
+    local browser_section=""
+    
+    if check_browser_validation; then
+        browser_section="
+6. For UI criteria, use MCP browser tools:
+   - browser_navigate to open pages
+   - browser_lock before interactions
+   - browser_snapshot before clicking/typing
+   - browser_screenshot to capture evidence
+   - browser_unlock when done
+   - Save screenshots to .ralph/screenshots/criterion-N.png
+"
+    fi
+    
+    cat << EOF
 Follow the Ralph Wiggum autonomous development protocol:
 
 1. FIRST read these files in order:
@@ -111,7 +153,7 @@ Follow the Ralph Wiggum autonomous development protocol:
 
 3. After completing each criterion:
    - Run the test_command from RALPH_TASK.md frontmatter
-   - Commit: git add -A && git commit -m "ralph: [criterion] - description"
+   - Commit: git add -A && git commit -m "ralph: [N] description"
    - Update RALPH_TASK.md: change [ ] to [x]
    - Update .ralph/progress.md with what was done
 
@@ -120,7 +162,7 @@ Follow the Ralph Wiggum autonomous development protocol:
    - Try a different approach
 
 5. When ALL criteria are [x], output: <ralph>COMPLETE</ralph>
-
+$browser_section
 Start now by reading RALPH_TASK.md.
 EOF
 }

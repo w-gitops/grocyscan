@@ -80,5 +80,6 @@ GrocyScan addresses these issues by:
 
 ## Navigation
 
+- **Previous:** [Standards of Development](00-Standards-of-Development.md)
 - **Next:** [User Stories](02-user-stories.md)
 - **Back to:** [README](README.md)
