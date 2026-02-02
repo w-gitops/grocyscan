@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     )
 
     # Application Core
-    grocyscan_version: str = "0.2.0-alpha"
+    grocyscan_version: str = "0.3.0-alpha"
     grocyscan_env: Literal["development", "staging", "production"] = "development"
     grocyscan_debug: bool = False
     grocyscan_host: str = "0.0.0.0"

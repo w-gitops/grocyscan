@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-alpha] - 2026-02-02
+
+### Added
+
+- **Dynamic LLM Model Selection** - Fetch available models from LLM provider API
+  - New endpoint `GET /api/settings/llm/models` returns available models
+  - Supports OpenAI, Ollama, Anthropic, and generic OpenAI-compatible endpoints
+  - UI dropdown with refresh button to fetch models dynamically
+
+- **Test Buttons for All Providers** - Settings UI now has test buttons for:
+  - Grocy connection (uses stored credentials via backend)
+  - OpenFoodFacts, go-upc, UPCitemdb, Brave Search lookup providers
+  - LLM connection with model count feedback
+
+- **API Key Status Indicators** - Visual "Key Set" badges show when API keys are configured
+  - Green badge appears next to provider name when key is saved
+  - Placeholder text indicates "Leave blank to keep existing key"
+
+- **LLM Integration Tests** - Test scripts for OpenAI/LLM functionality
+  - `scripts/test_llm.py` - Health check, completion, product optimization
+  - `scripts/test_brave_search.py` - Brave Search API integration
+  - `scripts/test_models_api.py` - Models endpoint validation
+
+- **Development Workflow Rule** - Cursor rule documenting local-to-remote deployment process
+
+### Fixed
+
+- LLM preset dropdown case sensitivity ("openai" vs "OpenAI")
+- Grocy test button now uses stored credentials via backend endpoint
+- Unicode symbols replaced with ASCII text for cross-platform compatibility
+- LLM client now reads settings dynamically for hot-reload support
+
 ## [0.2.0-alpha] - 2026-02-02
 
 ### Added
