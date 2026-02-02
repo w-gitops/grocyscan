@@ -187,6 +187,14 @@ def create_app() -> FastAPI:
     # Configure NiceGUI
     configure_nicegui()
 
+    # Integrate NiceGUI with FastAPI
+    from nicegui import ui
+    ui.run_with(
+        app,
+        title="GrocyScan",
+        favicon="🛒",
+    )
+
     return app
 
 
@@ -195,12 +203,11 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    from nicegui import ui
+    import uvicorn
 
-    ui.run(
+    uvicorn.run(
+        "app.main:app",
         host=settings.grocyscan_host,
         port=settings.grocyscan_port,
         reload=settings.is_development,
-        title="GrocyScan",
-        favicon="🛒",
     )
