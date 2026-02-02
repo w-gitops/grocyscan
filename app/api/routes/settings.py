@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -175,3 +176,129 @@ def _mask_sensitive_flat(data: dict[str, Any]) -> None:
         if key in data and data[key]:
             # Show that a value is set but don't reveal it
             data[key] = "••••••••" if data[key] else ""
+
+
+class ModelsResponse(BaseModel):
+    """Response containing available models."""
+    
+    success: bool
+    models: list[str]
+    provider: str
+    message: str = ""
+
+
+@router.get("/llm/models", response_model=ModelsResponse)
+async def get_available_models() -> ModelsResponse:
+    """Fetch available models from the configured LLM provider.
+    
+    Returns:
+        ModelsResponse: List of available model names
+    """
+    try:
+        llm_settings = settings_service.get_section("llm")
+        api_url = llm_settings.api_url
+        api_key = llm_settings.api_key
+        provider = llm_settings.provider_preset
+        
+        models = await _fetch_models_from_provider(api_url, api_key, provider)
+        
+        return ModelsResponse(
+            success=True,
+            models=models,
+            provider=provider,
+        )
+    except Exception as e:
+        logger.error("Failed to fetch models", error=str(e))
+        return ModelsResponse(
+            success=False,
+            models=[],
+            provider="unknown",
+            message=str(e),
+        )
+
+
+async def _fetch_models_from_provider(
+    api_url: str, api_key: str, provider: str
+) -> list[str]:
+    """Fetch available models from a provider's API.
+    
+    Args:
+        api_url: Provider API base URL
+        api_key: API key for authentication
+        provider: Provider name (openai, anthropic, ollama, generic)
+        
+    Returns:
+        List of model names
+    """
+    models = []
+    headers = {}
+    
+    # Set up auth headers
+    if api_key:
+        if provider == "anthropic":
+            headers["x-api-key"] = api_key
+            headers["anthropic-version"] = "2023-06-01"
+        else:
+            headers["Authorization"] = f"Bearer {api_key}"
+    
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        try:
+            if provider == "ollama":
+                # Ollama uses /api/tags endpoint
+                # Convert /v1 style URL to Ollama native
+                base_url = api_url.replace("/v1", "")
+                response = await client.get(f"{base_url}/api/tags")
+                if response.status_code == 200:
+                    data = response.json()
+                    models = [m["name"] for m in data.get("models", [])]
+                    
+            elif provider == "anthropic":
+                # Anthropic doesn't have a models endpoint, return common models
+                models = [
+                    "claude-3-opus-20240229",
+                    "claude-3-sonnet-20240229",
+                    "claude-3-haiku-20240307",
+                    "claude-3-5-sonnet-20240620",
+                    "claude-3-5-sonnet-20241022",
+                ]
+                
+            else:
+                # OpenAI-compatible /v1/models endpoint
+                response = await client.get(
+                    f"{api_url}/models",
+                    headers=headers,
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    all_models = [m["id"] for m in data.get("data", [])]
+                    
+                    # Filter to relevant models for OpenAI
+                    if provider == "openai":
+                        # Prioritize common models
+                        priority_models = [
+                            "gpt-4o",
+                            "gpt-4o-mini",
+                            "gpt-4-turbo",
+                            "gpt-4",
+                            "gpt-3.5-turbo",
+                            "o1-preview",
+                            "o1-mini",
+                        ]
+                        # Add priority models that exist
+                        for m in priority_models:
+                            if m in all_models:
+                                models.append(m)
+                        # Add any other gpt/o1 models not in priority list
+                        for m in all_models:
+                            if (m.startswith("gpt-") or m.startswith("o1-")) and m not in models:
+                                models.append(m)
+                    else:
+                        # For generic providers, return all models
+                        models = all_models
+                        
+        except httpx.ConnectError:
+            logger.warning(f"Could not connect to {api_url}")
+        except Exception as e:
+            logger.warning(f"Error fetching models: {e}")
+    
+    return models

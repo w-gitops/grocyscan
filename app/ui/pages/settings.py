@@ -202,6 +202,20 @@ async def render_grocy_settings() -> None:
             ui.button("Save", on_click=save_grocy).props("color=primary")
 
 
+async def fetch_llm_models() -> list[str]:
+    """Fetch available models from the LLM provider."""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{API_BASE}/settings/llm/models", timeout=15)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("success"):
+                    return data.get("models", [])
+    except Exception as e:
+        logger.warning("Failed to fetch models", error=str(e))
+    return []
+
+
 async def render_llm_settings() -> None:
     """Render LLM configuration settings."""
     # Load current settings
@@ -212,6 +226,7 @@ async def render_llm_settings() -> None:
         "api_url": current.get("api_url", "http://localhost:11434/v1"),
         "api_key": "",  # Don't pre-fill masked value
         "model": current.get("model", "llama3.1:8b"),
+        "available_models": [],
     }
     
     with ui.card().classes("w-full"):
@@ -224,8 +239,26 @@ async def render_llm_settings() -> None:
         
         # Create references for fields we need to update
         api_url_input = None
-        model_input = None
+        model_select = None
         api_key_container = None
+        model_container = None
+        
+        async def refresh_models():
+            """Fetch and update the model dropdown."""
+            models = await fetch_llm_models()
+            state["available_models"] = models
+            if model_select:
+                if models:
+                    # Update options - include current model if not in list
+                    options = models.copy()
+                    if state["model"] and state["model"] not in options:
+                        options.insert(0, state["model"])
+                    model_select.options = options
+                    model_select.update()
+                else:
+                    # No models fetched - show current model only
+                    model_select.options = [state["model"]] if state["model"] else ["default"]
+                    model_select.update()
         
         def on_preset_change(e):
             preset = e.value.lower()
@@ -235,10 +268,12 @@ async def render_llm_settings() -> None:
             # Update fields with preset defaults
             if api_url_input:
                 api_url_input.value = preset_config.get("api_url", "")
-            if model_input:
-                model_input.value = preset_config.get("model", "")
             state["api_url"] = preset_config.get("api_url", "")
             state["model"] = preset_config.get("model", "")
+            
+            # Update model dropdown with preset default
+            if model_select:
+                model_select.value = preset_config.get("model", "")
             
             # Show/hide API key field based on preset
             requires_key = preset_config.get("requires_key", False)
@@ -279,20 +314,46 @@ async def render_llm_settings() -> None:
             on_change=lambda e: state.update({"api_url": e.value}),
         ).classes("w-full mb-2")
         
-        model_input = ui.input(
-            label="Model",
-            value=state["model"],
-            on_change=lambda e: state.update({"model": e.value}),
-        ).classes("w-full mb-4")
+        # Model selection with dropdown
+        with ui.row().classes("w-full items-end gap-2 mb-4") as model_container:
+            model_select = ui.select(
+                options=[state["model"]] if state["model"] else ["default"],
+                value=state["model"],
+                label="Model",
+                with_input=True,  # Allow typing custom model names
+                on_change=lambda e: state.update({"model": e.value}),
+            ).classes("flex-grow")
+            
+            ui.button(
+                icon="refresh",
+                on_click=refresh_models,
+            ).props("flat round").tooltip("Fetch available models")
         
         status_label = ui.label("").classes("text-sm mb-4")
         
         async def test_llm():
             status_label.text = "Testing connection..."
-            # For now, just validate the configuration
-            status_label.text = "✓ Configuration appears valid"
-            status_label.classes(replace="text-sm mb-4 text-green-500")
-            ui.notify("LLM configuration valid", type="positive")
+            try:
+                async with httpx.AsyncClient() as client:
+                    # Try to fetch models as a connection test
+                    response = await client.get(f"{API_BASE}/settings/llm/models", timeout=15)
+                    if response.status_code == 200:
+                        data = response.json()
+                        if data.get("success") and data.get("models"):
+                            status_label.text = f"✓ Connected - {len(data['models'])} models available"
+                            status_label.classes(replace="text-sm mb-4 text-green-500")
+                            ui.notify("LLM connection successful", type="positive")
+                            # Update model dropdown
+                            await refresh_models()
+                        else:
+                            status_label.text = f"⚠ Connected but no models found: {data.get('message', '')}"
+                            status_label.classes(replace="text-sm mb-4 text-yellow-600")
+                    else:
+                        status_label.text = "✗ Failed to connect"
+                        status_label.classes(replace="text-sm mb-4 text-red-500")
+            except Exception as e:
+                status_label.text = f"✗ Connection error: {e}"
+                status_label.classes(replace="text-sm mb-4 text-red-500")
         
         async def save_llm():
             values = {
