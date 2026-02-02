@@ -7,15 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- NiceGUI integration with FastAPI when running under uvicorn - added `ui.run_with()` in `create_app()` to properly mount NiceGUI routes
+## [0.2.0-alpha] - 2026-02-02
 
 ### Added
 
-- Deploy scripts for bare-metal deployment (`scripts/deploy.ps1`, `scripts/deploy.sh`)
+- **Persistent Settings Storage** - Settings now stored in encrypted JSON file (`data/settings.json`)
+  - Fernet encryption for sensitive values (API keys)
+  - Settings service with load/save/update operations
+  - REST API endpoints for settings management (`GET/PUT /api/settings/{section}`)
 
-## [1.0.0] - 2026-02-02
+- **Lookup Provider API Keys UI** - Settings → Lookup tab now includes:
+  - API key inputs for go-upc, UPCitemdb, and Brave Search
+  - Enable/disable toggles for each provider
+  - Provider descriptions and status badges
+
+- **Hot-Reload for Settings** - Lookup provider settings take effect immediately without restart
+  - Dynamic settings loading in all lookup providers
+  - Automatic provider reload on settings save
+
+- **Skip Cache Option** - Added `skip_cache` parameter to scan API for testing/debugging
+
+- Test scripts for API validation (`scripts/test_api.py`, `scripts/test_settings.py`, `scripts/test_hot_reload.py`, `scripts/test_lookups.py`)
+
+### Fixed
+
+- Menu bar visibility - Navigation buttons now have proper contrast with `color=white` props and `bg-primary` header
+- NiceGUI integration with FastAPI when running under uvicorn
+- Circular import in UI layout components - moved to dedicated `app/ui/layout.py` module
+
+### Changed
+
+- Lookup providers refactored to read settings dynamically instead of caching at startup
+- Settings UI updated to fetch/save via API instead of static config
+
+## [0.1.0-alpha] - 2026-02-02
 
 ### Added
 
@@ -81,7 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Input validation with Pydantic
 - Secrets stored securely with SecretStr
 
-## [0.1.0] - 2026-02-02
+## [0.0.1-alpha] - 2026-02-02
 
 ### Added
 

@@ -5,7 +5,6 @@ from typing import Any
 
 import httpx
 
-from app.config import settings
 from app.core.logging import get_logger
 from app.services.lookup.base import BaseLookupProvider, LookupResult
 
@@ -13,6 +12,16 @@ logger = get_logger(__name__)
 
 # UPCitemdb API base URL
 UPCITEMDB_API_BASE = "https://api.upcitemdb.com/prod/trial"
+
+
+def _get_settings():
+    """Get current lookup settings."""
+    try:
+        from app.services.settings import settings_service
+        return settings_service.load().lookup
+    except Exception:
+        from app.config import settings
+        return settings
 
 
 class UPCItemDBProvider(BaseLookupProvider):
@@ -25,9 +34,24 @@ class UPCItemDBProvider(BaseLookupProvider):
     name = "upcitemdb"
 
     def __init__(self) -> None:
-        self.enabled = settings.upcitemdb_enabled
-        self.api_key = settings.upcitemdb_api_key.get_secret_value()
-        self.timeout = settings.lookup_timeout_seconds
+        pass  # Settings read dynamically
+
+    def is_enabled(self) -> bool:
+        """Check if UPCitemdb is enabled."""
+        return _get_settings().upcitemdb_enabled
+
+    def get_api_key(self) -> str:
+        """Get UPCitemdb API key."""
+        s = _get_settings()
+        if hasattr(s, 'upcitemdb_api_key'):
+            key = s.upcitemdb_api_key
+            return key.get_secret_value() if hasattr(key, 'get_secret_value') else key
+        return ""
+
+    @property
+    def timeout(self) -> int:
+        """Get lookup timeout."""
+        return _get_settings().timeout_seconds
 
     async def lookup(self, barcode: str) -> LookupResult:
         """Look up a barcode on UPCitemdb.
@@ -40,7 +64,7 @@ class UPCItemDBProvider(BaseLookupProvider):
         """
         start_time = time.time()
 
-        if not self.enabled:
+        if not self.is_enabled():
             return LookupResult(
                 barcode=barcode,
                 found=False,
@@ -50,8 +74,9 @@ class UPCItemDBProvider(BaseLookupProvider):
 
         try:
             headers = {"Content-Type": "application/json"}
-            if self.api_key:
-                headers["user_key"] = self.api_key
+            api_key = self.get_api_key()
+            if api_key:
+                headers["user_key"] = api_key
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(
@@ -141,7 +166,7 @@ class UPCItemDBProvider(BaseLookupProvider):
 
     async def health_check(self) -> bool:
         """Check if UPCitemdb API is available."""
-        if not self.enabled:
+        if not self.is_enabled():
             return False
 
         try:

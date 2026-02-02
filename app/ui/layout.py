@@ -7,17 +7,22 @@ from app.config import settings
 
 def create_header() -> None:
     """Create the application header with navigation."""
-    with ui.header().classes("items-center justify-between"):
-        with ui.row().classes("items-center gap-4"):
-            ui.label("GrocyScan").classes("text-xl font-bold")
+    with ui.header().classes("items-center justify-between bg-primary"):
+        with ui.row().classes("items-center gap-2"):
+            ui.label("GrocyScan").classes(
+                "text-xl font-bold text-white cursor-pointer"
+            ).on("click", lambda: ui.navigate.to("/"))
+            ui.label(f"v{settings.grocyscan_version}").classes(
+                "text-xs text-white opacity-70"
+            )
 
         with ui.row().classes("items-center gap-2"):
-            ui.button("Scan", on_click=lambda: ui.navigate.to("/scan")).props("flat")
-            ui.button("Products", on_click=lambda: ui.navigate.to("/products")).props("flat")
-            ui.button("Locations", on_click=lambda: ui.navigate.to("/locations")).props("flat")
-            ui.button("Jobs", on_click=lambda: ui.navigate.to("/jobs")).props("flat")
-            ui.button("Logs", on_click=lambda: ui.navigate.to("/logs")).props("flat")
-            ui.button("Settings", on_click=lambda: ui.navigate.to("/settings")).props("flat")
+            ui.button("Scan", on_click=lambda: ui.navigate.to("/scan")).props("flat color=white")
+            ui.button("Products", on_click=lambda: ui.navigate.to("/products")).props("flat color=white")
+            ui.button("Locations", on_click=lambda: ui.navigate.to("/locations")).props("flat color=white")
+            ui.button("Jobs", on_click=lambda: ui.navigate.to("/jobs")).props("flat color=white")
+            ui.button("Logs", on_click=lambda: ui.navigate.to("/logs")).props("flat color=white")
+            ui.button("Settings", on_click=lambda: ui.navigate.to("/settings")).props("flat color=white")
 
 
 def create_footer() -> None:

@@ -5,7 +5,6 @@ from typing import Any
 
 import httpx
 
-from app.config import settings
 from app.core.logging import get_logger
 from app.services.lookup.base import BaseLookupProvider, LookupResult
 
@@ -13,6 +12,16 @@ logger = get_logger(__name__)
 
 # OpenFoodFacts API base URL
 OFF_API_BASE = "https://world.openfoodfacts.org/api/v2"
+
+
+def _get_settings():
+    """Get current lookup settings."""
+    try:
+        from app.services.settings import settings_service
+        return settings_service.load().lookup
+    except Exception:
+        from app.config import settings
+        return settings
 
 
 class OpenFoodFactsProvider(BaseLookupProvider):
@@ -25,9 +34,22 @@ class OpenFoodFactsProvider(BaseLookupProvider):
     name = "openfoodfacts"
 
     def __init__(self) -> None:
-        self.enabled = settings.openfoodfacts_enabled
-        self.user_agent = settings.openfoodfacts_user_agent
-        self.timeout = settings.lookup_timeout_seconds
+        pass  # Settings read dynamically
+
+    def is_enabled(self) -> bool:
+        """Check if OpenFoodFacts is enabled."""
+        return _get_settings().openfoodfacts_enabled
+
+    @property
+    def user_agent(self) -> str:
+        """Get user agent string."""
+        from app.config import settings
+        return settings.openfoodfacts_user_agent
+
+    @property
+    def timeout(self) -> int:
+        """Get lookup timeout."""
+        return _get_settings().timeout_seconds
 
     async def lookup(self, barcode: str) -> LookupResult:
         """Look up a barcode on OpenFoodFacts.
@@ -40,7 +62,7 @@ class OpenFoodFactsProvider(BaseLookupProvider):
         """
         start_time = time.time()
 
-        if not self.enabled:
+        if not self.is_enabled():
             return LookupResult(
                 barcode=barcode,
                 found=False,
@@ -206,7 +228,7 @@ class OpenFoodFactsProvider(BaseLookupProvider):
         Returns:
             bool: True if API is reachable
         """
-        if not self.enabled:
+        if not self.is_enabled():
             return False
 
         try:

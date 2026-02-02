@@ -89,7 +89,7 @@ async def scan_barcode(request: Request, scan_request: ScanRequest) -> ScanRespo
         logger.warning("Grocy lookup failed", barcode=lookup_barcode, error=str(e))
 
     # Look up product information
-    lookup_result = await lookup_manager.lookup(lookup_barcode)
+    lookup_result = await lookup_manager.lookup(lookup_barcode, skip_cache=scan_request.skip_cache)
 
     # Build product info
     product = None

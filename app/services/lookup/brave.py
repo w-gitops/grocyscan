@@ -6,7 +6,6 @@ from typing import Any
 
 import httpx
 
-from app.config import settings
 from app.core.logging import get_logger
 from app.services.lookup.base import BaseLookupProvider, LookupResult
 
@@ -14,6 +13,16 @@ logger = get_logger(__name__)
 
 # Brave Search API base URL
 BRAVE_API_BASE = "https://api.search.brave.com/res/v1"
+
+
+def _get_settings():
+    """Get current lookup settings."""
+    try:
+        from app.services.settings import settings_service
+        return settings_service.load().lookup
+    except Exception:
+        from app.config import settings
+        return settings
 
 
 class BraveSearchProvider(BaseLookupProvider):
@@ -26,10 +35,29 @@ class BraveSearchProvider(BaseLookupProvider):
     name = "brave"
 
     def __init__(self) -> None:
-        self.enabled = settings.brave_enabled
-        self.api_key = settings.brave_api_key.get_secret_value()
-        self.timeout = settings.lookup_timeout_seconds
-        self.use_as_fallback = settings.brave_use_as_fallback
+        pass  # Settings read dynamically
+
+    def is_enabled(self) -> bool:
+        """Check if Brave Search is enabled."""
+        return _get_settings().brave_enabled
+
+    def get_api_key(self) -> str:
+        """Get Brave Search API key."""
+        s = _get_settings()
+        if hasattr(s, 'brave_api_key'):
+            key = s.brave_api_key
+            return key.get_secret_value() if hasattr(key, 'get_secret_value') else key
+        return ""
+
+    @property
+    def timeout(self) -> int:
+        """Get lookup timeout."""
+        return _get_settings().timeout_seconds
+
+    @property
+    def use_as_fallback(self) -> bool:
+        """Check if Brave should be used as fallback only."""
+        return _get_settings().brave_use_as_fallback
 
     async def lookup(self, barcode: str) -> LookupResult:
         """Look up a barcode using Brave Search.
@@ -44,8 +72,9 @@ class BraveSearchProvider(BaseLookupProvider):
             LookupResult: Product information if found
         """
         start_time = time.time()
+        api_key = self.get_api_key()
 
-        if not self.enabled or not self.api_key:
+        if not self.is_enabled() or not api_key:
             return LookupResult(
                 barcode=barcode,
                 found=False,
@@ -62,7 +91,7 @@ class BraveSearchProvider(BaseLookupProvider):
                         "count": 5,
                     },
                     headers={
-                        "X-Subscription-Token": self.api_key,
+                        "X-Subscription-Token": api_key,
                         "Accept": "application/json",
                     },
                 )
@@ -175,7 +204,8 @@ class BraveSearchProvider(BaseLookupProvider):
 
     async def health_check(self) -> bool:
         """Check if Brave Search API is available."""
-        if not self.enabled or not self.api_key:
+        api_key = self.get_api_key()
+        if not self.is_enabled() or not api_key:
             return False
 
         try:
@@ -183,7 +213,7 @@ class BraveSearchProvider(BaseLookupProvider):
                 response = await client.get(
                     f"{BRAVE_API_BASE}/web/search",
                     params={"q": "test", "count": 1},
-                    headers={"X-Subscription-Token": self.api_key},
+                    headers={"X-Subscription-Token": api_key},
                 )
                 return response.status_code == 200
         except Exception:

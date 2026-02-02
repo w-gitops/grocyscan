@@ -29,7 +29,26 @@ class BaseLookupProvider(ABC):
     """Abstract base class for lookup providers."""
 
     name: str = "base"
-    enabled: bool = True
+
+    def is_enabled(self) -> bool:
+        """Check if this provider is enabled in current settings.
+        
+        Override in subclasses to read from settings service.
+        
+        Returns:
+            bool: True if provider is enabled
+        """
+        return True
+
+    def get_api_key(self) -> str:
+        """Get the API key for this provider from current settings.
+        
+        Override in subclasses to read from settings service.
+        
+        Returns:
+            str: API key or empty string
+        """
+        return ""
 
     @abstractmethod
     async def lookup(self, barcode: str) -> LookupResult:

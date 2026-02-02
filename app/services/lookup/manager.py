@@ -4,7 +4,6 @@ import asyncio
 import time
 from typing import Any
 
-from app.config import settings
 from app.core.logging import get_logger
 from app.services.cache import cache_service
 from app.services.lookup.base import BaseLookupProvider, LookupResult
@@ -16,10 +15,22 @@ from app.services.lookup.upcitemdb import UPCItemDBProvider
 logger = get_logger(__name__)
 
 
+def _get_lookup_settings():
+    """Get current lookup settings from settings service."""
+    try:
+        from app.services.settings import settings_service
+        return settings_service.load().lookup
+    except Exception:
+        # Fallback to static config if settings service not available
+        from app.config import settings
+        return settings
+
+
 class LookupManager:
     """Manages barcode lookups across multiple providers.
 
     Supports sequential and parallel lookup strategies with Redis caching.
+    Settings are read dynamically to support hot-reload.
     """
 
     def __init__(self) -> None:
@@ -28,22 +39,40 @@ class LookupManager:
         self._init_providers()
 
     def _init_providers(self) -> None:
-        """Initialize configured providers."""
-        # Register available providers
+        """Initialize configured providers based on current settings."""
+        lookup_settings = _get_lookup_settings()
+        
+        # Clear existing providers
+        self.providers.clear()
+        
+        # Create fresh provider instances that read settings dynamically
         available_providers = {
-            "openfoodfacts": OpenFoodFactsProvider(),
-            "goupc": GoUPCProvider(),
-            "upcitemdb": UPCItemDBProvider(),
-            "brave": BraveSearchProvider(),
+            "openfoodfacts": OpenFoodFactsProvider,
+            "goupc": GoUPCProvider,
+            "upcitemdb": UPCItemDBProvider,
+            "brave": BraveSearchProvider,
         }
 
+        # Get provider order from settings
+        provider_order = getattr(lookup_settings, 'provider_order', None)
+        if provider_order is None:
+            # Fallback to config
+            from app.config import settings
+            provider_order = settings.provider_list
+
         # Only include enabled providers in configured order
-        for provider_name in settings.provider_list:
+        for provider_name in provider_order:
             if provider_name in available_providers:
-                provider = available_providers[provider_name]
-                if provider.enabled:
+                provider = available_providers[provider_name]()
+                if provider.is_enabled():
                     self.providers[provider_name] = provider
                     logger.info(f"Registered lookup provider: {provider_name}")
+
+    def reload(self) -> None:
+        """Reload providers with current settings. Call after settings change."""
+        logger.info("Reloading lookup providers")
+        self._init_providers()
+        logger.info(f"Lookup providers reloaded: {list(self.providers.keys())}")
 
     async def lookup(self, barcode: str, skip_cache: bool = False) -> LookupResult:
         """Look up a barcode using configured strategy.
@@ -69,7 +98,9 @@ class LookupManager:
                 return cached
 
         # Query providers
-        if settings.lookup_strategy == "parallel":
+        lookup_settings = _get_lookup_settings()
+        strategy = getattr(lookup_settings, 'strategy', 'sequential')
+        if strategy == "parallel":
             result = await self._lookup_parallel(barcode)
         else:
             result = await self._lookup_sequential(barcode)
@@ -234,12 +265,13 @@ class LookupManager:
         Returns:
             dict: Provider status information
         """
+        lookup_settings = _get_lookup_settings()
         return {
-            "strategy": settings.lookup_strategy,
+            "strategy": getattr(lookup_settings, 'strategy', 'sequential'),
             "providers": [
                 {
                     "name": name,
-                    "enabled": provider.enabled,
+                    "enabled": provider.is_enabled(),
                     "order": i,
                 }
                 for i, (name, provider) in enumerate(self.providers.items())

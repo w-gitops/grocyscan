@@ -25,9 +25,10 @@ httpx>=0.26.0
 # LLM
 litellm>=1.20.0
 
-# Authentication
+# Authentication & Security
 bcrypt>=4.1.0
 python-multipart>=0.0.6
+cryptography>=41.0.0
 
 # Logging & Observability
 structlog>=24.1.0
