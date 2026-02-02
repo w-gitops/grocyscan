@@ -147,7 +147,7 @@ async def render_grocy_settings() -> None:
         with ui.row().classes("items-center gap-2 mb-2"):
             ui.label("API Key").classes("font-medium")
             if grocy_key_configured:
-                ui.badge("✓ Key Set", color="green")
+                ui.badge("Key Set", color="green")
         
         ui.input(
             label="",
@@ -184,19 +184,19 @@ async def render_grocy_settings() -> None:
                             msg = data.get("message", "Connected")
                             details = data.get("details", {})
                             if details.get("version"):
-                                msg = f"✓ {msg}"
+                                msg = f"OK: {msg}"
                             status_label.text = msg
                             status_label.classes(replace="text-sm mb-4 text-green-500")
                             ui.notify("Grocy connection successful", type="positive")
                         else:
-                            status_label.text = f"✗ {data.get('message', 'Connection failed')}"
+                            status_label.text = f"ERROR: {data.get('message', 'Connection failed')}"
                             status_label.classes(replace="text-sm mb-4 text-red-500")
                             ui.notify(data.get("message", "Connection failed"), type="warning")
                     else:
-                        status_label.text = f"✗ HTTP {response.status_code}"
+                        status_label.text = f"ERROR: HTTP {response.status_code}"
                         status_label.classes(replace="text-sm mb-4 text-red-500")
             except Exception as e:
-                status_label.text = f"✗ {str(e)}"
+                status_label.text = f"ERROR: {str(e)}"
                 status_label.classes(replace="text-sm mb-4 text-red-500")
         
         async def save_grocy():
@@ -210,11 +210,11 @@ async def render_grocy_settings() -> None:
             
             success, message = await save_settings("grocy", values)
             if success:
-                status_label.text = f"✓ {message}"
+                status_label.text = f"OK: {message}"
                 status_label.classes(replace="text-sm mb-4 text-green-500")
                 ui.notify(message, type="positive")
             else:
-                status_label.text = f"✗ {message}"
+                status_label.text = f"ERROR: {message}"
                 status_label.classes(replace="text-sm mb-4 text-red-500")
                 ui.notify(message, type="negative")
         
@@ -333,7 +333,7 @@ async def render_llm_settings() -> None:
             with ui.row().classes("items-center gap-2 mb-2"):
                 ui.label("API Key").classes("font-medium")
                 if llm_key_configured:
-                    ui.badge("✓ Key Set", color="green")
+                    ui.badge("Key Set", color="green")
             
             ui.input(
                 label="",
@@ -382,19 +382,19 @@ async def render_llm_settings() -> None:
                     if response.status_code == 200:
                         data = response.json()
                         if data.get("success") and data.get("models"):
-                            status_label.text = f"✓ Connected - {len(data['models'])} models available"
+                            status_label.text = f"OK: Connected - {len(data['models'])} models available"
                             status_label.classes(replace="text-sm mb-4 text-green-500")
                             ui.notify("LLM connection successful", type="positive")
                             # Update model dropdown
                             await refresh_models()
                         else:
-                            status_label.text = f"⚠ Connected but no models found: {data.get('message', '')}"
+                            status_label.text = f"WARNING: Connected but no models found: {data.get('message', '')}"
                             status_label.classes(replace="text-sm mb-4 text-yellow-600")
                     else:
-                        status_label.text = "✗ Failed to connect"
+                        status_label.text = "ERROR: Failed to connect"
                         status_label.classes(replace="text-sm mb-4 text-red-500")
             except Exception as e:
-                status_label.text = f"✗ Connection error: {e}"
+                status_label.text = f"ERROR: Connection error: {e}"
                 status_label.classes(replace="text-sm mb-4 text-red-500")
         
         async def save_llm():
@@ -408,11 +408,11 @@ async def render_llm_settings() -> None:
             
             success, message = await save_settings("llm", values)
             if success:
-                status_label.text = f"✓ {message}"
+                status_label.text = f"OK: {message}"
                 status_label.classes(replace="text-sm mb-4 text-green-500")
                 ui.notify(message, type="positive")
             else:
-                status_label.text = f"✗ {message}"
+                status_label.text = f"ERROR: {message}"
                 status_label.classes(replace="text-sm mb-4 text-red-500")
                 ui.notify(message, type="negative")
         
@@ -470,24 +470,24 @@ async def render_lookup_settings() -> None:
                 if response.status_code == 200:
                     data = response.json()
                     if data.get("success"):
-                        msg = f"✓ {data.get('product_name', 'Found')} ({data.get('lookup_time_ms', 0)}ms)"
+                        msg = f"OK: {data.get('product_name', 'Found')} ({data.get('lookup_time_ms', 0)}ms)"
                         if status_label:
                             status_label.text = msg
                             status_label.classes(replace="text-xs text-green-600")
                         ui.notify(f"{provider}: {msg}", type="positive")
                     else:
-                        msg = f"✗ {data.get('message', 'Failed')}"
+                        msg = f"ERROR: {data.get('message', 'Failed')}"
                         if status_label:
                             status_label.text = msg
                             status_label.classes(replace="text-xs text-red-500")
                         ui.notify(f"{provider}: {msg}", type="warning")
                 else:
                     if status_label:
-                        status_label.text = f"✗ HTTP {response.status_code}"
+                        status_label.text = f"ERROR: HTTP {response.status_code}"
                         status_label.classes(replace="text-xs text-red-500")
         except Exception as e:
             if status_label:
-                status_label.text = f"✗ {str(e)}"
+                status_label.text = f"ERROR: {str(e)}"
                 status_label.classes(replace="text-xs text-red-500")
     
     with ui.card().classes("w-full"):
@@ -533,7 +533,7 @@ async def render_lookup_settings() -> None:
                     ui.label("go-upc.com").classes("font-medium")
                     ui.badge("API Key", color="orange").classes("ml-2")
                     if keys_configured["goupc"]:
-                        ui.badge("✓ Key Set", color="green").classes("ml-1")
+                        ui.badge("Key Set", color="green").classes("ml-1")
                 with ui.row().classes("items-center gap-2"):
                     ui.button(
                         "Test",
@@ -563,7 +563,7 @@ async def render_lookup_settings() -> None:
                     ui.label("UPCitemdb").classes("font-medium")
                     ui.badge("API Key", color="orange").classes("ml-2")
                     if keys_configured["upcitemdb"]:
-                        ui.badge("✓ Key Set", color="green").classes("ml-1")
+                        ui.badge("Key Set", color="green").classes("ml-1")
                 with ui.row().classes("items-center gap-2"):
                     ui.button(
                         "Test",
@@ -593,7 +593,7 @@ async def render_lookup_settings() -> None:
                     ui.label("Brave Search").classes("font-medium")
                     ui.badge("Fallback", color="blue").classes("ml-2")
                     if keys_configured["brave"]:
-                        ui.badge("✓ Key Set", color="green").classes("ml-1")
+                        ui.badge("Key Set", color="green").classes("ml-1")
                 with ui.row().classes("items-center gap-2"):
                     ui.button(
                         "Test",
@@ -641,11 +641,11 @@ async def render_lookup_settings() -> None:
             
             success, message = await save_settings("lookup", values)
             if success:
-                status_label.text = f"✓ {message}"
+                status_label.text = f"OK: {message}"
                 status_label.classes(replace="text-sm mb-4 text-green-500")
                 ui.notify(message, type="positive")
             else:
-                status_label.text = f"✗ {message}"
+                status_label.text = f"ERROR: {message}"
                 status_label.classes(replace="text-sm mb-4 text-red-500")
                 ui.notify(message, type="negative")
         
@@ -708,11 +708,11 @@ async def render_scanning_settings() -> None:
         async def save_scanning():
             success, message = await save_settings("scanning", state)
             if success:
-                status_label.text = f"✓ {message}"
+                status_label.text = f"OK: {message}"
                 status_label.classes(replace="text-sm mb-4 text-green-500")
                 ui.notify(message, type="positive")
             else:
-                status_label.text = f"✗ {message}"
+                status_label.text = f"ERROR: {message}"
                 status_label.classes(replace="text-sm mb-4 text-red-500")
                 ui.notify(message, type="negative")
         
@@ -751,11 +751,11 @@ async def render_ui_settings() -> None:
         async def save_ui():
             success, message = await save_settings("ui", state)
             if success:
-                status_label.text = f"✓ {message}"
+                status_label.text = f"OK: {message}"
                 status_label.classes(replace="text-sm mb-4 text-green-500")
                 ui.notify(message, type="positive")
             else:
-                status_label.text = f"✗ {message}"
+                status_label.text = f"ERROR: {message}"
                 status_label.classes(replace="text-sm mb-4 text-red-500")
                 ui.notify(message, type="negative")
         
