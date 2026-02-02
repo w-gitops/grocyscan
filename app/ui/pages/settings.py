@@ -221,6 +221,9 @@ async def render_llm_settings() -> None:
     # Load current settings
     current = await fetch_settings("llm")
     
+    # Check if API key is already configured
+    llm_key_configured = _has_key_configured(current.get("api_key", ""))
+    
     # Mapping between internal preset names and display names
     PRESET_DISPLAY_NAMES = {
         "openai": "OpenAI",
@@ -306,9 +309,14 @@ async def render_llm_settings() -> None:
         # API Key container (shown/hidden based on preset)
         current_preset = LLM_PRESETS.get(state["preset"], {})
         with ui.column().classes("w-full") as api_key_container:
+            with ui.row().classes("items-center gap-2 mb-2"):
+                ui.label("API Key").classes("font-medium")
+                if llm_key_configured:
+                    ui.badge("✓ Key Set", color="green")
+            
             ui.input(
-                label="API Key",
-                placeholder="Enter API key",
+                label="",
+                placeholder="Leave blank to keep existing key" if llm_key_configured else "Enter API key",
                 password=True,
                 password_toggle_button=True,
                 on_change=lambda e: state.update({"api_key": e.value}),
@@ -392,10 +400,22 @@ async def render_llm_settings() -> None:
             ui.button("Save", on_click=save_llm).props("color=primary")
 
 
+def _has_key_configured(masked_value: str) -> bool:
+    """Check if an API key is configured based on masked value."""
+    return masked_value and masked_value.startswith("••")
+
+
 async def render_lookup_settings() -> None:
     """Render lookup provider settings."""
     # Load current settings
     current = await fetch_settings("lookup")
+    
+    # Check which keys are already configured (masked values indicate key is set)
+    keys_configured = {
+        "goupc": _has_key_configured(current.get("goupc_api_key", "")),
+        "upcitemdb": _has_key_configured(current.get("upcitemdb_api_key", "")),
+        "brave": _has_key_configured(current.get("brave_api_key", "")),
+    }
     
     state = {
         "strategy": current.get("strategy", "sequential"),
@@ -491,6 +511,8 @@ async def render_lookup_settings() -> None:
                     ui.icon("drag_indicator", color="gray")
                     ui.label("go-upc.com").classes("font-medium")
                     ui.badge("API Key", color="orange").classes("ml-2")
+                    if keys_configured["goupc"]:
+                        ui.badge("✓ Key Set", color="green").classes("ml-1")
                 with ui.row().classes("items-center gap-2"):
                     ui.button(
                         "Test",
@@ -505,7 +527,7 @@ async def render_lookup_settings() -> None:
             )
             ui.input(
                 label="API Key",
-                placeholder="Enter go-upc.com API key",
+                placeholder="Leave blank to keep existing key" if keys_configured["goupc"] else "Enter go-upc.com API key",
                 password=True,
                 password_toggle_button=True,
                 on_change=lambda e: state.update({"goupc_api_key": e.value}),
@@ -519,6 +541,8 @@ async def render_lookup_settings() -> None:
                     ui.icon("drag_indicator", color="gray")
                     ui.label("UPCitemdb").classes("font-medium")
                     ui.badge("API Key", color="orange").classes("ml-2")
+                    if keys_configured["upcitemdb"]:
+                        ui.badge("✓ Key Set", color="green").classes("ml-1")
                 with ui.row().classes("items-center gap-2"):
                     ui.button(
                         "Test",
@@ -533,7 +557,7 @@ async def render_lookup_settings() -> None:
             )
             ui.input(
                 label="API Key",
-                placeholder="Enter UPCitemdb API key",
+                placeholder="Leave blank to keep existing key" if keys_configured["upcitemdb"] else "Enter UPCitemdb API key",
                 password=True,
                 password_toggle_button=True,
                 on_change=lambda e: state.update({"upcitemdb_api_key": e.value}),
@@ -547,6 +571,8 @@ async def render_lookup_settings() -> None:
                     ui.icon("drag_indicator", color="gray")
                     ui.label("Brave Search").classes("font-medium")
                     ui.badge("Fallback", color="blue").classes("ml-2")
+                    if keys_configured["brave"]:
+                        ui.badge("✓ Key Set", color="green").classes("ml-1")
                 with ui.row().classes("items-center gap-2"):
                     ui.button(
                         "Test",
@@ -561,7 +587,7 @@ async def render_lookup_settings() -> None:
             )
             ui.input(
                 label="API Key",
-                placeholder="Enter Brave Search API key",
+                placeholder="Leave blank to keep existing key" if keys_configured["brave"] else "Enter Brave Search API key",
                 password=True,
                 password_toggle_button=True,
                 on_change=lambda e: state.update({"brave_api_key": e.value}),
