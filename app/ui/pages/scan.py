@@ -204,7 +204,7 @@ async def render() -> None:
         with ui.card().classes("w-full mb-4"):
             ui.label("Scan or Enter Barcode").classes("font-semibold mb-2")
             page.scanner = BarcodeScanner(
-                on_scan=lambda b: ui.run_background(page.handle_scan(b)),
+                on_scan=page.handle_scan,
             )
             page.scanner.render()
 
@@ -222,7 +222,7 @@ async def render() -> None:
 
     # Review popup
     page.review_popup = ProductReviewPopup(
-        on_confirm=lambda d: ui.run_background(page.handle_confirm(d)),
+        on_confirm=page.handle_confirm,
     )
 
     create_mobile_nav()

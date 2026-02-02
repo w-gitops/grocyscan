@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1-alpha] - 2026-02-02
+
+### Added
+
+- **Mobile Camera Scanner Improvements**
+  - Dynamic html5-qrcode library loading with status feedback
+  - Torch/flash toggle for low-light scanning
+  - Automatic 3x zoom on supported devices for better focus distance
+  - Mobile-optimized scan box aspect ratio (taller for UPC barcodes)
+  - Prioritized UPC/EAN barcode format detection
+
+### Fixed
+
+- **Barcode Validation** - Corrected checksum calculation for UPC-A and EAN-13 barcodes
+  - Fixed weighting pattern that was preventing valid barcodes from being recognized
+- **Camera Scanner** - Fixed "Initializing camera..." stuck state on mobile and desktop
+- **UI Components** - Fixed `ui.input` icon parameter compatibility in Products and Logs pages
+- **Async Callbacks** - Fixed slot context errors when handling barcode scan results
+- **Touch Detection** - Fixed `has_touch` attribute error in review popup
+
 ## [0.3.0-alpha] - 2026-02-02
 
 ### Added

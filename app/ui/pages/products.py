@@ -17,7 +17,7 @@ async def render() -> None:
 
         # Search and filter
         with ui.row().classes("w-full gap-4 mb-4"):
-            ui.input(placeholder="Search products...", icon="search").classes("flex-grow")
+            ui.input(placeholder="Search products...").props('prepend-icon="search"').classes("flex-grow")
             ui.select(
                 ["All Categories", "Groceries", "Dairy", "Produce", "Frozen"],
                 value="All Categories",

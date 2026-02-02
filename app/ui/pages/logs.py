@@ -21,7 +21,7 @@ async def render() -> None:
                 label="Level",
             ).classes("w-40")
 
-            ui.input(placeholder="Search logs...", icon="search").classes("flex-grow")
+            ui.input(placeholder="Search logs...").props('prepend-icon="search"').classes("flex-grow")
 
             ui.button("Refresh", icon="refresh", on_click=lambda: None).props("outline")
             ui.button("Copy All", icon="content_copy", on_click=lambda: None).props("outline")

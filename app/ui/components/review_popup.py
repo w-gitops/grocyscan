@@ -58,7 +58,12 @@ class ProductReviewPopup:
     def _render(self) -> None:
         """Render the popup dialog."""
         with ui.dialog() as self._dialog:
-            self._dialog.props("maximized" if ui.context.client.has_touch else "")
+            # Check for touch device - use getattr for compatibility with different NiceGUI versions
+            try:
+                is_touch = getattr(ui.context.client, 'has_touch', False)
+            except Exception:
+                is_touch = False
+            self._dialog.props("maximized" if is_touch else "")
 
             with ui.card().classes("w-full max-w-3xl mx-auto"):
                 # Header
