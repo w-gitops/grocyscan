@@ -3,7 +3,7 @@
 from nicegui import ui
 
 from app.config import settings
-from app.ui.app import create_header, create_mobile_nav
+from app.ui.layout import create_header, create_mobile_nav
 
 
 async def render() -> None:
