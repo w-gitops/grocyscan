@@ -4,11 +4,20 @@ from typing import Any
 
 from litellm import acompletion
 
-from app.config import settings
 from app.core.exceptions import LLMError
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _get_llm_settings():
+    """Get current LLM settings from settings service."""
+    try:
+        from app.services.settings import settings_service
+        return settings_service.load().llm
+    except Exception:
+        from app.config import settings
+        return settings
 
 
 class LLMClient:
@@ -16,14 +25,42 @@ class LLMClient:
 
     Provides a unified interface for calling various LLM providers
     (OpenAI, Anthropic, Ollama, etc.) through LiteLLM.
+    Settings are read dynamically to support hot-reload.
     """
 
     def __init__(self) -> None:
-        self.api_url = settings.llm_api_url
-        self.api_key = settings.llm_api_key.get_secret_value()
-        self.model = settings.llm_model
-        self.timeout = settings.llm_timeout_seconds
-        self.max_retries = settings.llm_max_retries
+        pass  # Settings read dynamically
+
+    @property
+    def api_url(self) -> str:
+        """Get API URL from current settings."""
+        return _get_llm_settings().api_url
+
+    @property
+    def api_key(self) -> str:
+        """Get API key from current settings."""
+        s = _get_llm_settings()
+        if hasattr(s, 'api_key'):
+            key = s.api_key
+            return key.get_secret_value() if hasattr(key, 'get_secret_value') else key
+        return ""
+
+    @property
+    def model(self) -> str:
+        """Get model from current settings."""
+        return _get_llm_settings().model
+
+    @property
+    def timeout(self) -> int:
+        """Get timeout from current settings."""
+        from app.config import settings
+        return settings.llm_timeout_seconds
+
+    @property
+    def max_retries(self) -> int:
+        """Get max retries from current settings."""
+        from app.config import settings
+        return settings.llm_max_retries
 
     async def complete(
         self,
