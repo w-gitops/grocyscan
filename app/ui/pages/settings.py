@@ -221,6 +221,15 @@ async def render_llm_settings() -> None:
     # Load current settings
     current = await fetch_settings("llm")
     
+    # Mapping between internal preset names and display names
+    PRESET_DISPLAY_NAMES = {
+        "openai": "OpenAI",
+        "anthropic": "Anthropic",
+        "ollama": "Ollama",
+        "generic": "Generic",
+    }
+    PRESET_FROM_DISPLAY = {v: k for k, v in PRESET_DISPLAY_NAMES.items()}
+    
     state = {
         "preset": current.get("provider_preset", "ollama"),
         "api_url": current.get("api_url", "http://localhost:11434/v1"),
@@ -261,7 +270,8 @@ async def render_llm_settings() -> None:
                     model_select.update()
         
         def on_preset_change(e):
-            preset = e.value.lower()
+            # Convert display name back to internal name
+            preset = PRESET_FROM_DISPLAY.get(e.value, e.value.lower())
             state["preset"] = preset
             preset_config = LLM_PRESETS.get(preset, {})
             
@@ -283,9 +293,12 @@ async def render_llm_settings() -> None:
             # Update description
             preset_description.text = preset_config.get("description", "")
         
+        # Get display name for current preset
+        current_display = PRESET_DISPLAY_NAMES.get(state["preset"], "Ollama")
+        
         ui.select(
             ["OpenAI", "Anthropic", "Ollama", "Generic"],
-            value=state["preset"].title(),
+            value=current_display,
             label="Provider Preset",
             on_change=on_preset_change,
         ).classes("w-full mb-2")
