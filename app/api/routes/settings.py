@@ -314,6 +314,80 @@ class ProviderTestResponse(BaseModel):
     product_name: str | None = None
 
 
+class ConnectionTestResponse(BaseModel):
+    """Response from testing a connection."""
+    
+    success: bool
+    message: str
+    details: dict[str, Any] | None = None
+
+
+@router.post("/grocy/test", response_model=ConnectionTestResponse)
+async def test_grocy_connection() -> ConnectionTestResponse:
+    """Test connection to Grocy using stored credentials.
+    
+    Returns:
+        ConnectionTestResponse: Test result with Grocy system info
+    """
+    try:
+        grocy_settings = settings_service.get_section("grocy")
+        api_url = grocy_settings.api_url
+        api_key = grocy_settings.api_key
+        
+        if not api_url:
+            return ConnectionTestResponse(
+                success=False,
+                message="Grocy API URL not configured",
+            )
+        
+        if not api_key:
+            return ConnectionTestResponse(
+                success=False,
+                message="Grocy API key not configured",
+            )
+        
+        # Test connection to Grocy
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{api_url}/api/system/info",
+                headers={"GROCY-API-KEY": api_key},
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                return ConnectionTestResponse(
+                    success=True,
+                    message=f"Connected to Grocy {data.get('grocy_version', {}).get('Version', 'unknown')}",
+                    details={
+                        "version": data.get("grocy_version", {}).get("Version"),
+                        "php_version": data.get("php_version"),
+                        "sqlite_version": data.get("sqlite_version"),
+                    },
+                )
+            elif response.status_code == 401:
+                return ConnectionTestResponse(
+                    success=False,
+                    message="Authentication failed - check API key",
+                )
+            else:
+                return ConnectionTestResponse(
+                    success=False,
+                    message=f"HTTP {response.status_code}: {response.text[:100]}",
+                )
+                
+    except httpx.ConnectError:
+        return ConnectionTestResponse(
+            success=False,
+            message="Could not connect to Grocy server",
+        )
+    except Exception as e:
+        logger.error("Grocy connection test failed", error=str(e))
+        return ConnectionTestResponse(
+            success=False,
+            message=str(e),
+        )
+
+
 @router.post("/lookup/test/{provider}", response_model=ProviderTestResponse)
 async def test_lookup_provider(provider: str) -> ProviderTestResponse:
     """Test a lookup provider with a known barcode.

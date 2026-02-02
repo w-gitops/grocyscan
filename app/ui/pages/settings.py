@@ -125,6 +125,9 @@ async def render_grocy_settings() -> None:
     # Load current settings
     current = await fetch_settings("grocy")
     
+    # Check if API key is already configured
+    grocy_key_configured = _has_key_configured(current.get("api_key", ""))
+    
     state = {
         "api_url": current.get("api_url", "http://localhost:9283"),
         "api_key": "",  # Don't pre-fill masked value
@@ -140,15 +143,19 @@ async def render_grocy_settings() -> None:
             on_change=lambda e: state.update({"api_url": e.value}),
         ).classes("w-full mb-2")
         
+        # API Key with status indicator
+        with ui.row().classes("items-center gap-2 mb-2"):
+            ui.label("API Key").classes("font-medium")
+            if grocy_key_configured:
+                ui.badge("✓ Key Set", color="green")
+        
         ui.input(
-            label="API Key",
-            placeholder="Enter new API key to update",
+            label="",
+            placeholder="Leave blank to keep existing key" if grocy_key_configured else "Enter Grocy API key",
             password=True,
             password_toggle_button=True,
             on_change=lambda e: state.update({"api_key": e.value}),
         ).classes("w-full mb-2")
-        
-        ui.label("Leave blank to keep existing key").classes("text-xs text-gray-500 mb-2")
         
         ui.input(
             label="Web URL",
@@ -159,23 +166,37 @@ async def render_grocy_settings() -> None:
         status_label = ui.label("").classes("text-sm mb-4")
         
         async def test_grocy():
+            """Test Grocy connection using stored credentials."""
             status_label.text = "Testing connection..."
+            status_label.classes(replace="text-sm mb-4 text-gray-500")
+            
             try:
                 async with httpx.AsyncClient() as client:
-                    response = await client.get(
-                        f"{state['api_url']}/api/system/info",
-                        headers={"GROCY-API-KEY": state["api_key"]} if state["api_key"] else {},
-                        timeout=10,
+                    # Use backend endpoint that has access to stored key
+                    response = await client.post(
+                        f"{API_BASE}/settings/grocy/test",
+                        timeout=15,
                     )
+                    
                     if response.status_code == 200:
-                        status_label.text = "✓ Connection successful"
-                        status_label.classes(replace="text-sm mb-4 text-green-500")
-                        ui.notify("Grocy connection successful", type="positive")
+                        data = response.json()
+                        if data.get("success"):
+                            msg = data.get("message", "Connected")
+                            details = data.get("details", {})
+                            if details.get("version"):
+                                msg = f"✓ {msg}"
+                            status_label.text = msg
+                            status_label.classes(replace="text-sm mb-4 text-green-500")
+                            ui.notify("Grocy connection successful", type="positive")
+                        else:
+                            status_label.text = f"✗ {data.get('message', 'Connection failed')}"
+                            status_label.classes(replace="text-sm mb-4 text-red-500")
+                            ui.notify(data.get("message", "Connection failed"), type="warning")
                     else:
-                        status_label.text = f"✗ Connection failed: {response.status_code}"
+                        status_label.text = f"✗ HTTP {response.status_code}"
                         status_label.classes(replace="text-sm mb-4 text-red-500")
             except Exception as e:
-                status_label.text = f"✗ Connection failed: {e}"
+                status_label.text = f"✗ {str(e)}"
                 status_label.classes(replace="text-sm mb-4 text-red-500")
         
         async def save_grocy():
