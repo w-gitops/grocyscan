@@ -1,0 +1,72 @@
+---
+description: GrocyScan development workflow - local development with remote deployment and testing
+alwaysApply: true
+---
+
+# GrocyScan Development Workflow
+
+This project uses a **local development + remote deployment** workflow. Code changes are made locally and deployed to a remote development server for testing.
+
+## Server Details
+
+- **Remote Server**: `192.168.200.37` (SSH as `root`)
+- **Install Path**: `/opt/grocyscan/`
+- **Service Name**: `grocyscan` (systemd)
+- **Local URL**: `http://localhost:3334`
+- **Public URL**: `https://grocyscan.ssiops.com`
+
+## Deployment Process
+
+### 1. Make Changes Locally
+
+Edit files in `c:\git\grocyscan\` as normal.
+
+### 2. Deploy to Remote Server
+
+Use PowerShell pipe to transfer files:
+
+```powershell
+# Single file
+type "c:\git\grocyscan\app\path\to\file.py" | ssh root@192.168.200.37 "cat > /opt/grocyscan/app/path/to/file.py"
+
+# Multiple files - run in parallel
+```
+
+### 3. Restart Service
+
+```powershell
+ssh root@192.168.200.37 "systemctl restart grocyscan && sleep 3"
+```
+
+### 4. Test Changes
+
+- **API endpoints**: Use `curl` via SSH
+- **UI pages**: Check HTTP status codes or test manually at the public URL
+- **Logs**: `ssh root@192.168.200.37 "journalctl -u grocyscan -n 50 --no-pager"`
+
+## Common Patterns
+
+### Deploy and Restart in One Command
+
+```powershell
+type "c:\git\grocyscan\app\file.py" | ssh root@192.168.200.37 "cat > /opt/grocyscan/app/file.py && systemctl restart grocyscan && sleep 3"
+```
+
+### Test an API Endpoint
+
+```powershell
+ssh root@192.168.200.37 "curl -s http://localhost:3334/api/endpoint | python3 -m json.tool"
+```
+
+### Run a Python Script on Server
+
+```powershell
+type "c:\git\grocyscan\scripts\test.py" | ssh root@192.168.200.37 "cat > /opt/grocyscan/scripts/test.py && cd /opt/grocyscan && /opt/grocyscan/venv/bin/python scripts/test.py"
+```
+
+## Important Notes
+
+1. **Always deploy before testing** - The remote server runs the code, not your local machine
+2. **Restart after Python changes** - The service needs restart for code changes to take effect
+3. **Check logs on errors** - Use `journalctl` to see Python tracebacks
+4. **Commit after verification** - Only commit once changes are tested and working on the server
