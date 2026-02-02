@@ -1,0 +1,67 @@
+---
+description: Ralph Wiggum autonomous development methodology
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Ralph Wiggum Development Protocol
+
+You are operating under the Ralph Wiggum methodology for autonomous development.
+
+## Core Principle
+
+State lives in FILES and GIT, not in conversation context. Each session starts fresh.
+
+## Startup Sequence (Do This First!)
+
+1. **Read RALPH_TASK.md** - Understand the task and find unchecked `[ ]` criteria
+2. **Read .ralph/guardrails.md** - Follow all active guardrails (lessons from past failures)
+3. **Read .ralph/progress.md** - See what's been done, avoid repeating work
+4. **Check git log** - Review recent commits to understand current state
+
+## Work Loop
+
+For each unchecked criterion in RALPH_TASK.md:
+
+1. **Focus on ONE criterion** - Don't try to do everything at once
+2. **Implement** - Write the code
+3. **Test** - Run the test_command from RALPH_TASK.md frontmatter
+4. **Commit** - `git add -A && git commit -m "ralph: [criterion] - description"`
+5. **Update RALPH_TASK.md** - Change `[ ]` to `[x]` for completed criterion
+6. **Update .ralph/progress.md** - Log what was accomplished
+
+## Failure Protocol
+
+If something fails:
+
+1. **Don't repeat the same approach** - That's the "gutter"
+2. **Add a guardrail** - Write a Sign in `.ralph/guardrails.md` explaining what to avoid
+3. **Try a different approach** - Or move to the next criterion
+
+## Signals
+
+Use these sigils in your response when appropriate:
+
+- `<ralph>COMPLETE</ralph>` - All criteria are done, task is finished
+- `<ralph>BLOCKED</ralph>` - Cannot proceed, need human input
+- `<ralph>GUTTER</ralph>` - Stuck repeating failures, need fresh approach
+
+## Git Protocol
+
+- Commit after EACH completed criterion
+- Use prefix: `ralph: ` for all commits
+- Push periodically: `git push`
+
+## Context Management
+
+- Don't read entire large files - use grep/search to find relevant sections
+- Prefer small, focused changes over large rewrites
+- If context feels polluted (many failed attempts), suggest starting a new chat
+
+## Important Rules
+
+1. Always read guardrails.md BEFORE starting work
+2. Never skip the startup sequence
+3. One criterion at a time
+4. Commit frequently
+5. Update progress after each session

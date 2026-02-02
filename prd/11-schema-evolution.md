@@ -1,0 +1,157 @@
+# 11. Schema Evolution Strategy
+
+## 11.1 Migration Principles
+
+1. **Never modify existing migrations** - Always create new ones
+2. **Always provide rollback** - Every `upgrade()` needs `downgrade()`
+3. **Zero-downtime migrations** - Use multi-step approach for breaking changes
+4. **Test migrations** - Run against copy of production data
+5. **Backup before migration** - Always backup database first
+
+## 11.2 Alembic Configuration
+
+```python
+# migrations/env.py
+from logging.config import fileConfig
+from sqlalchemy import engine_from_config, pool
+from alembic import context
+
+from app.db.models import Base
+from app.config import settings
+
+config = context.config
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+target_metadata = Base.metadata
+
+
+def run_migrations_online() -> None:
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+
+    with connectable.connect() as connection:
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+        )
+
+        with context.begin_transaction():
+            context.run_migrations()
+```
+
+## 11.3 Zero-Downtime Migration Patterns
+
+### Adding Non-Nullable Column (Multi-Step)
+
+```python
+# Migration 1: Add column as nullable
+def upgrade():
+    op.add_column('products', sa.Column('sku', sa.String(100), nullable=True))
+    op.execute("CREATE INDEX CONCURRENTLY ix_products_sku ON products(sku)")
+
+# Migration 2: Backfill data (run after app deployment)
+def upgrade():
+    op.execute("""
+        UPDATE products 
+        SET sku = 'SKU-' || SUBSTRING(id::text, 1, 8)
+        WHERE sku IS NULL
+    """)
+
+# Migration 3: Add NOT NULL constraint
+def upgrade():
+    op.execute("""
+        ALTER TABLE products 
+        ADD CONSTRAINT products_sku_not_null 
+        CHECK (sku IS NOT NULL) NOT VALID
+    """)
+    op.execute("ALTER TABLE products VALIDATE CONSTRAINT products_sku_not_null")
+    op.alter_column('products', 'sku', nullable=False)
+    op.execute("ALTER TABLE products DROP CONSTRAINT products_sku_not_null")
+```
+
+### Column Rename (Zero Downtime)
+
+```python
+def upgrade():
+    # Create backwards-compatible view
+    op.execute("CREATE SCHEMA IF NOT EXISTS schema_v1")
+    op.execute("""
+        CREATE VIEW schema_v1.products AS 
+        SELECT id, user_id, name, category FROM public.products
+    """)
+    
+    # Rename column
+    op.alter_column('products', 'name', new_column_name='product_name')
+    
+    # Update view to map new column to old name
+    op.execute("DROP VIEW schema_v1.products")
+    op.execute("""
+        CREATE VIEW schema_v1.products AS 
+        SELECT id, user_id, product_name AS name, category FROM public.products
+    """)
+```
+
+## 11.4 Migration Best Practices
+
+| Practice | Description |
+|----------|-------------|
+| **Backup First** | Always backup database before running migrations |
+| **Set Lock Timeout** | Set `lock_timeout` in migration scripts |
+| **Test on Copy** | Run migrations against copy of production data first |
+| **Monitor Locks** | Set `log_lock_waits` to find issues |
+| **Batched Updates** | For large data migrations, use batched updates |
+| **Concurrent Indexes** | Use `CREATE INDEX CONCURRENTLY` |
+| **Validate Separately** | Use `NOT VALID` + `VALIDATE CONSTRAINT` pattern |
+
+## 11.5 Pre-Migration Checklist
+
+```bash
+#!/bin/bash
+# scripts/pre-migration-check.sh
+
+echo "=== Pre-Migration Checklist ==="
+
+# 1. Backup database
+pg_dump -Fc $DATABASE_URL > backup_$(date +%Y%m%d_%H%M%S).dump
+
+# 2. Check active connections
+psql $DATABASE_URL -c "SELECT count(*) FROM pg_stat_activity WHERE state = 'active';"
+
+# 3. Check for long-running queries
+psql $DATABASE_URL -c "SELECT pid, now() - query_start AS duration, query 
+FROM pg_stat_activity 
+WHERE state = 'active' AND now() - query_start > interval '5 minutes';"
+
+# 4. Dry run migration
+alembic upgrade head --sql > migration_preview.sql
+```
+
+## 11.6 Rollback Procedures
+
+```bash
+#!/bin/bash
+# scripts/rollback-migration.sh
+
+set -e
+
+CURRENT=$(alembic current 2>/dev/null | grep -oP '^\w+')
+echo "Current revision: $CURRENT"
+
+read -p "Enter target revision to rollback to: " TARGET
+
+# Create backup
+pg_dump -Fc $DATABASE_URL > rollback_backup_$(date +%Y%m%d_%H%M%S).dump
+
+# Execute rollback
+alembic downgrade $TARGET
+```
+
+---
+
+## Navigation
+
+- **Previous:** [Testing Strategy](10-testing-strategy.md)
+- **Next:** [Security](12-security.md)
+- **Back to:** [README](README.md)

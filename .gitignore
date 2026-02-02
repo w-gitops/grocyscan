@@ -201,6 +201,13 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# Ralph Wiggum state (keep these tracked in git for state persistence)
+# .ralph/  # DO NOT ignore - Ralph needs this tracked
+
+# Ralph activity logs (can be ignored if too noisy)
+.ralph/activity.log
+.ralph/errors.log
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
