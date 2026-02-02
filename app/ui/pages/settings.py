@@ -410,6 +410,45 @@ async def render_lookup_settings() -> None:
         "brave_use_as_fallback": current.get("brave_use_as_fallback", True),
     }
     
+    # Store test status labels for each provider
+    test_status_labels = {}
+    
+    async def test_provider(provider: str):
+        """Test a lookup provider."""
+        status_label = test_status_labels.get(provider)
+        if status_label:
+            status_label.text = "Testing..."
+            status_label.classes(replace="text-xs text-gray-500")
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{API_BASE}/settings/lookup/test/{provider}",
+                    timeout=20,
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("success"):
+                        msg = f"✓ {data.get('product_name', 'Found')} ({data.get('lookup_time_ms', 0)}ms)"
+                        if status_label:
+                            status_label.text = msg
+                            status_label.classes(replace="text-xs text-green-600")
+                        ui.notify(f"{provider}: {msg}", type="positive")
+                    else:
+                        msg = f"✗ {data.get('message', 'Failed')}"
+                        if status_label:
+                            status_label.text = msg
+                            status_label.classes(replace="text-xs text-red-500")
+                        ui.notify(f"{provider}: {msg}", type="warning")
+                else:
+                    if status_label:
+                        status_label.text = f"✗ HTTP {response.status_code}"
+                        status_label.classes(replace="text-xs text-red-500")
+        except Exception as e:
+            if status_label:
+                status_label.text = f"✗ {str(e)}"
+                status_label.classes(replace="text-xs text-red-500")
+    
     with ui.card().classes("w-full"):
         ui.label("Lookup Providers").classes("font-semibold mb-4")
         ui.label("Configure barcode lookup providers and API keys").classes("text-sm text-gray-500 mb-4")
@@ -431,13 +470,19 @@ async def render_lookup_settings() -> None:
                     ui.icon("drag_indicator", color="gray")
                     ui.label("OpenFoodFacts").classes("font-medium")
                     ui.badge("Free", color="green").classes("ml-2")
-                ui.switch(
-                    value=state["openfoodfacts_enabled"],
-                    on_change=lambda e: state.update({"openfoodfacts_enabled": e.value}),
-                )
+                with ui.row().classes("items-center gap-2"):
+                    ui.button(
+                        "Test",
+                        on_click=lambda: test_provider("openfoodfacts"),
+                    ).props("flat dense size=sm")
+                    ui.switch(
+                        value=state["openfoodfacts_enabled"],
+                        on_change=lambda e: state.update({"openfoodfacts_enabled": e.value}),
+                    )
             ui.label("Open database with nutrition info. No API key required.").classes(
                 "text-xs text-gray-500 mt-1"
             )
+            test_status_labels["openfoodfacts"] = ui.label("").classes("text-xs text-gray-500")
         
         # go-upc
         with ui.card().classes("w-full mb-3 p-3"):
@@ -446,10 +491,15 @@ async def render_lookup_settings() -> None:
                     ui.icon("drag_indicator", color="gray")
                     ui.label("go-upc.com").classes("font-medium")
                     ui.badge("API Key", color="orange").classes("ml-2")
-                ui.switch(
-                    value=state["goupc_enabled"],
-                    on_change=lambda e: state.update({"goupc_enabled": e.value}),
-                )
+                with ui.row().classes("items-center gap-2"):
+                    ui.button(
+                        "Test",
+                        on_click=lambda: test_provider("goupc"),
+                    ).props("flat dense size=sm")
+                    ui.switch(
+                        value=state["goupc_enabled"],
+                        on_change=lambda e: state.update({"goupc_enabled": e.value}),
+                    )
             ui.label("Commercial UPC database with good coverage.").classes(
                 "text-xs text-gray-500 mt-1"
             )
@@ -460,6 +510,7 @@ async def render_lookup_settings() -> None:
                 password_toggle_button=True,
                 on_change=lambda e: state.update({"goupc_api_key": e.value}),
             ).classes("w-full mt-2")
+            test_status_labels["goupc"] = ui.label("").classes("text-xs text-gray-500")
         
         # UPCitemdb
         with ui.card().classes("w-full mb-3 p-3"):
@@ -468,10 +519,15 @@ async def render_lookup_settings() -> None:
                     ui.icon("drag_indicator", color="gray")
                     ui.label("UPCitemdb").classes("font-medium")
                     ui.badge("API Key", color="orange").classes("ml-2")
-                ui.switch(
-                    value=state["upcitemdb_enabled"],
-                    on_change=lambda e: state.update({"upcitemdb_enabled": e.value}),
-                )
+                with ui.row().classes("items-center gap-2"):
+                    ui.button(
+                        "Test",
+                        on_click=lambda: test_provider("upcitemdb"),
+                    ).props("flat dense size=sm")
+                    ui.switch(
+                        value=state["upcitemdb_enabled"],
+                        on_change=lambda e: state.update({"upcitemdb_enabled": e.value}),
+                    )
             ui.label("Large UPC database with free tier available.").classes(
                 "text-xs text-gray-500 mt-1"
             )
@@ -482,6 +538,7 @@ async def render_lookup_settings() -> None:
                 password_toggle_button=True,
                 on_change=lambda e: state.update({"upcitemdb_api_key": e.value}),
             ).classes("w-full mt-2")
+            test_status_labels["upcitemdb"] = ui.label("").classes("text-xs text-gray-500")
         
         # Brave Search
         with ui.card().classes("w-full mb-3 p-3"):
@@ -490,10 +547,15 @@ async def render_lookup_settings() -> None:
                     ui.icon("drag_indicator", color="gray")
                     ui.label("Brave Search").classes("font-medium")
                     ui.badge("Fallback", color="blue").classes("ml-2")
-                ui.switch(
-                    value=state["brave_enabled"],
-                    on_change=lambda e: state.update({"brave_enabled": e.value}),
-                )
+                with ui.row().classes("items-center gap-2"):
+                    ui.button(
+                        "Test",
+                        on_click=lambda: test_provider("brave"),
+                    ).props("flat dense size=sm")
+                    ui.switch(
+                        value=state["brave_enabled"],
+                        on_change=lambda e: state.update({"brave_enabled": e.value}),
+                    )
             ui.label("Web search fallback for unknown products.").classes(
                 "text-xs text-gray-500 mt-1"
             )
@@ -509,6 +571,7 @@ async def render_lookup_settings() -> None:
                 value=state["brave_use_as_fallback"],
                 on_change=lambda e: state.update({"brave_use_as_fallback": e.value}),
             ).classes("mt-2")
+            test_status_labels["brave"] = ui.label("").classes("text-xs text-gray-500")
         
         status_label = ui.label("").classes("text-sm mb-4")
         

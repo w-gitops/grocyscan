@@ -302,3 +302,99 @@ async def _fetch_models_from_provider(
             logger.warning(f"Error fetching models: {e}")
     
     return models
+
+
+class ProviderTestResponse(BaseModel):
+    """Response from testing a lookup provider."""
+    
+    success: bool
+    provider: str
+    message: str
+    lookup_time_ms: int = 0
+    product_name: str | None = None
+
+
+@router.post("/lookup/test/{provider}", response_model=ProviderTestResponse)
+async def test_lookup_provider(provider: str) -> ProviderTestResponse:
+    """Test a lookup provider with a known barcode.
+    
+    Args:
+        provider: Provider name (openfoodfacts, goupc, upcitemdb, brave)
+        
+    Returns:
+        ProviderTestResponse: Test result
+    """
+    # Test barcode - Nutella (well-known product)
+    test_barcode = "3017620422003"
+    
+    try:
+        # Import provider classes directly to test them independently
+        from app.services.lookup.brave import BraveSearchProvider
+        from app.services.lookup.goupc import GoUPCProvider
+        from app.services.lookup.openfoodfacts import OpenFoodFactsProvider
+        from app.services.lookup.upcitemdb import UPCItemDBProvider
+        
+        # Create provider instance based on name
+        provider_classes = {
+            "openfoodfacts": OpenFoodFactsProvider,
+            "goupc": GoUPCProvider,
+            "upcitemdb": UPCItemDBProvider,
+            "brave": BraveSearchProvider,
+        }
+        
+        provider_lower = provider.lower()
+        if provider_lower not in provider_classes:
+            return ProviderTestResponse(
+                success=False,
+                provider=provider,
+                message=f"Unknown provider '{provider}'",
+            )
+        
+        # Create a fresh instance for testing
+        provider_instance = provider_classes[provider_lower]()
+        
+        # Check if enabled
+        if not provider_instance.is_enabled():
+            return ProviderTestResponse(
+                success=False,
+                provider=provider,
+                message=f"{provider} is disabled in settings",
+            )
+        
+        # Check if API key required but missing
+        if hasattr(provider_instance, 'get_api_key'):
+            api_key = provider_instance.get_api_key()
+            # For providers that need keys, check if set
+            if provider_lower in ['goupc', 'upcitemdb', 'brave'] and not api_key:
+                return ProviderTestResponse(
+                    success=False,
+                    provider=provider,
+                    message=f"API key not configured for {provider}",
+                )
+        
+        # Perform test lookup
+        result = await provider_instance.lookup(test_barcode)
+        
+        if result.found:
+            return ProviderTestResponse(
+                success=True,
+                provider=provider,
+                message=f"Successfully found product",
+                lookup_time_ms=result.lookup_time_ms,
+                product_name=result.name,
+            )
+        else:
+            return ProviderTestResponse(
+                success=False,
+                provider=provider,
+                message="Provider responded but product not found",
+                lookup_time_ms=result.lookup_time_ms,
+            )
+            
+    except Exception as e:
+        logger.error(f"Provider test failed", provider=provider, error=str(e))
+        return ProviderTestResponse(
+            success=False,
+            provider=provider,
+            message=str(e),
+        )
