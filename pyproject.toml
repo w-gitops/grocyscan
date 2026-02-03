@@ -1,6 +1,6 @@
 [project]
 name = "grocyscan"
-version = "0.3.3-alpha"
+version = "0.3.4-alpha"
 description = "Barcode scanning app for Grocy inventory management"
 readme = "README.md"
 requires-python = ">=3.11"

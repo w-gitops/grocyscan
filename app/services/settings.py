@@ -27,7 +27,12 @@ class LookupSettings(BaseModel):
     
     strategy: str = "sequential"
     provider_order: list[str] = Field(
-        default_factory=lambda: ["openfoodfacts", "goupc", "upcitemdb", "brave"]
+        default_factory=lambda: ["openfoodfacts", "goupc", "upcitemdb", "brave"],
+        description="Order for barcode/UPC lookup (first match wins in sequential).",
+    )
+    name_search_provider_order: list[str] = Field(
+        default_factory=lambda: ["brave", "openfoodfacts"],
+        description="Order for search-by-name (Brave preferred; results merged in this order).",
     )
     timeout_seconds: int = 10
     

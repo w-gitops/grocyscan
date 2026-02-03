@@ -9,24 +9,32 @@ from app.services.llm.client import llm_client
 logger = get_logger(__name__)
 
 
-OPTIMIZE_SYSTEM_PROMPT = """You are a product name optimizer for a grocery inventory system.
-Your job is to clean and standardize product names from various barcode databases.
+OPTIMIZE_SYSTEM_PROMPT = """You are a product data formatter for a grocery inventory system (Grocy).
+Your job is to turn raw barcode/lookup data into clean, consistent product records: standard title, short description, brand, and category.
 
-Rules:
-1. Remove unnecessary qualifiers (organic, natural, etc.) unless part of brand
-2. Standardize capitalization (Title Case)
-3. Include brand name at start if known
-4. Include size/quantity if present in original name
-5. Keep names concise but descriptive
-6. Fix obvious typos
-7. Translate non-English names to English if possible
+Rules for the product name (title):
+1. Use Title Case. Keep concise but descriptive (e.g. "Milk Chocolate Bar 100g").
+2. Put brand at the start only if it is a well-known brand (e.g. "Lindt Dark Chocolate Bar").
+3. Include size/quantity when present (e.g. "500 ml", "12 oz").
+4. Remove filler (organic, natural, etc.) unless it defines the product.
+5. Fix typos. Prefer English if the input was mixed language.
 
-Output JSON format:
+Rules for the description:
+1. One or two short sentences: what the product is and key info (e.g. ingredients, use).
+2. No marketing fluff. Useful for someone scanning the pantry later.
+3. If no good description is available, leave as empty string.
+
+Rules for brand:
+1. Only set if clearly a brand name (e.g. Nestlé, Coca-Cola, store brand). Otherwise empty string.
+2. Use standard spelling and capitalization.
+
+Output JSON only, no markdown:
 {
-    "name": "Optimized product name",
-    "brand": "Brand name if detected",
-    "category": "Category (Dairy, Produce, Bakery, Frozen, Beverages, Snacks, Condiments, Canned, Meat, Seafood, Household, Personal Care, Baby, Pets, Other)",
-    "quantity_unit": "Unit if detectable (pieces, g, ml, oz, lb, etc.)"
+    "name": "Clean product title",
+    "description": "Short product description or empty string",
+    "brand": "Brand name or empty string",
+    "category": "One of: Dairy, Produce, Bakery, Frozen, Beverages, Snacks, Condiments, Canned, Meat, Seafood, Household, Personal Care, Baby, Pets, Other",
+    "quantity_unit": "pieces, g, ml, oz, lb, etc. or null if unknown"
 }"""
 
 
@@ -55,32 +63,48 @@ async def optimize_product_name(
     if description:
         prompt_parts.append(f"Description: {description[:200]}")
 
+    if raw_data:
+        prompt_parts.append(f"Raw context: {str(raw_data)[:300]}")
     prompt = "\n".join(prompt_parts)
-    prompt += "\n\nOptimize this product name and infer the category."
+    prompt += "\n\nReturn optimized product name, description, brand, and category as JSON."
 
     try:
         response = await llm_client.complete(
             prompt=prompt,
             system_prompt=OPTIMIZE_SYSTEM_PROMPT,
             temperature=0.2,
-            max_tokens=200,
+            max_tokens=400,
         )
 
-        # Parse JSON response
-        # Handle potential markdown code blocks
+        # Parse JSON response (handle markdown code blocks)
         response = response.strip()
-        if response.startswith("```"):
-            response = response.split("```")[1]
-            if response.startswith("json"):
-                response = response[4:]
+        if "```" in response:
+            parts = response.split("```")
+            for p in parts:
+                p = p.strip()
+                if p.startswith("json"):
+                    p = p[4:].strip()
+                if p.startswith("{"):
+                    response = p
+                    break
 
         result = json.loads(response)
+        # Normalize keys and ensure required fields
+        out = {
+            "name": (result.get("name") or name).strip() or name,
+            "description": (result.get("description") or "").strip(),
+            "brand": (result.get("brand") or "").strip() or (brand or ""),
+            "category": (result.get("category") or "").strip() or None,
+            "quantity_unit": result.get("quantity_unit") or None,
+        }
         logger.info(
-            "Product name optimized",
+            "Product data optimized",
             original=name,
-            optimized=result.get("name"),
+            title=out["name"],
+            has_description=bool(out["description"]),
+            brand=out["brand"] or None,
         )
-        return result
+        return out
 
     except json.JSONDecodeError as e:
         logger.warning(
@@ -88,19 +112,19 @@ async def optimize_product_name(
             name=name,
             error=str(e),
         )
-        # Return original data on parse error
         return {
             "name": name,
-            "brand": brand,
+            "description": (description or "")[:500] if description else "",
+            "brand": brand or "",
             "category": None,
             "quantity_unit": None,
         }
     except Exception as e:
         logger.error("LLM optimization failed", name=name, error=str(e))
-        # Return original data on error
         return {
             "name": name,
-            "brand": brand,
+            "description": (description or "")[:500] if description else "",
+            "brand": brand or "",
             "category": None,
             "quantity_unit": None,
         }

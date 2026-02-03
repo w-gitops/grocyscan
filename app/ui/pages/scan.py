@@ -107,6 +107,8 @@ class ScanPage:
                             "scan_id": data.get("scan_id"),
                             "barcode": data.get("barcode"),
                             "name": product.get("name"),
+                            "description": product.get("description"),
+                            "brand": product.get("brand"),
                             "category": product.get("category"),
                             "image_url": product.get("image_url"),
                             "nutrition": product.get("nutrition"),
@@ -147,12 +149,15 @@ class ScanPage:
                     f"http://localhost:{settings.grocyscan_port}/api/scan/{scan_id}/confirm",
                     json={
                         "name": form_data.get("name"),
+                        "description": form_data.get("description"),
+                        "brand": form_data.get("brand"),
                         "category": form_data.get("category"),
                         "quantity": form_data.get("quantity", 1),
                         "location_code": form_data.get("location_code"),
                         "best_before": form_data.get("best_before").isoformat() if form_data.get("best_before") else None,
                         "price": form_data.get("price"),
                         "create_in_grocy": True,
+                        "use_llm_enhancement": form_data.get("use_llm_enhancement", True),
                     },
                 )
 

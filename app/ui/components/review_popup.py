@@ -34,11 +34,14 @@ class ProductReviewPopup:
 
         # Form fields
         self._name_input: ui.input | None = None
+        self._description_input: ui.textarea | None = None
+        self._brand_input: ui.input | None = None
         self._category_input: ui.input | None = None
         self._quantity_input: ui.number | None = None
         self._date_picker: TouchDatePicker | None = None
         self._price_input: ui.number | None = None
         self._notes_input: ui.textarea | None = None
+        self._use_llm_checkbox: ui.checkbox | None = None
 
     def open(self, product_data: dict[str, Any]) -> None:
         """Open the popup with product data.
@@ -100,10 +103,22 @@ class ProductReviewPopup:
 
                 # Editable form
                 with ui.column().classes("w-full gap-4"):
-                    # Name (required)
+                    # Name (required) — LLM will clean/standardize if enhancement is on
                     self._name_input = ui.input(
                         label="Product Name *",
                         value=self._product_data.get("name", ""),
+                    ).classes("w-full")
+
+                    # Description (for Grocy; LLM can improve if enhancement is on)
+                    self._description_input = ui.textarea(
+                        label="Description",
+                        value=self._product_data.get("description", ""),
+                    ).classes("w-full").props("rows=3")
+
+                    # Brand (stored in Grocy userfield if you add 'Brand' in Grocy Userfields)
+                    self._brand_input = ui.input(
+                        label="Brand",
+                        value=self._product_data.get("brand", ""),
                     ).classes("w-full")
 
                     # Category
@@ -148,6 +163,12 @@ class ProductReviewPopup:
                         value="",
                     ).classes("w-full")
 
+                    # LLM enhancement: clean title, description, brand before adding to Grocy
+                    self._use_llm_checkbox = ui.checkbox(
+                        "Use AI to clean title, description and brand",
+                        value=True,
+                    ).classes("mt-2")
+
                 # Nutrition info (if available, read-only)
                 nutrition = self._product_data.get("nutrition")
                 if nutrition:
@@ -176,6 +197,8 @@ class ProductReviewPopup:
         # Gather form data
         form_data = {
             "name": self._name_input.value,
+            "description": self._description_input.value if self._description_input else None,
+            "brand": self._brand_input.value if self._brand_input else None,
             "category": self._category_input.value if self._category_input else None,
             "quantity": int(self._quantity_input.value) if self._quantity_input else 1,
             "location_code": self._product_data.get("location_code"),
@@ -184,6 +207,7 @@ class ProductReviewPopup:
             "notes": self._notes_input.value if self._notes_input else None,
             "barcode": self._product_data.get("barcode"),
             "scan_id": self._product_data.get("scan_id"),
+            "use_llm_enhancement": bool(self._use_llm_checkbox.value) if self._use_llm_checkbox else True,
         }
 
         self.close()

@@ -196,32 +196,39 @@ class GrocyClient:
         description: str | None = None,
         location_id: int | None = None,
         quantity_unit_id: int | None = None,
+        userfields: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Create a new product.
 
         Args:
-            name: Product name
-            description: Product description
+            name: Product name (title)
+            description: Product description for Grocy
             location_id: Default location ID
             quantity_unit_id: Quantity unit ID
+            userfields: Optional Grocy userfields (e.g. {"Brand": "Nestlé"}).
+                        Create the userfield in Grocy UI (Userfields → Products) first.
             **kwargs: Additional product fields
 
         Returns:
-            dict: Created product data
+            dict: Created product data (id or created_object_id)
         """
         # Minimal required fields for Grocy 4.x
-        data = {
+        data: dict[str, Any] = {
             "name": name,
-            "description": description or "",
+            "description": (description or "").strip(),
             "location_id": location_id or 1,
             "qu_id_purchase": quantity_unit_id or 1,
             "qu_id_stock": quantity_unit_id or 1,
             **kwargs,
         }
+        if userfields and isinstance(userfields, dict):
+            data["userfields"] = {k: str(v) for k, v in userfields.items() if v is not None and str(v).strip()}
 
         result = await self._request("POST", "/objects/products", json=data)
         logger.info("Product created in Grocy", name=name)
+        if isinstance(result, dict) and "created_object_id" in result:
+            return {"id": result["created_object_id"], **result}
         return result if isinstance(result, dict) else {"id": 0}
 
     async def update_product(
@@ -407,6 +414,38 @@ class GrocyClient:
         result = await self._request("POST", "/objects/locations", json=data)
         logger.info("Location created in Grocy", name=name)
         return result if isinstance(result, dict) else {}
+
+    async def update_location(
+        self, location_id: int, **kwargs: Any
+    ) -> dict[str, Any] | None:
+        """Update a location.
+
+        Args:
+            location_id: Grocy location ID
+            **kwargs: Fields to update (name, description, is_freezer)
+
+        Returns:
+            dict: Updated location data or None
+        """
+        if "is_freezer" in kwargs:
+            kwargs["is_freezer"] = int(kwargs["is_freezer"])
+        result = await self._request(
+            "PUT", f"/objects/locations/{location_id}", json=kwargs
+        )
+        logger.info("Location updated in Grocy", location_id=location_id)
+        return result if isinstance(result, dict) else None
+
+    async def delete_location(self, location_id: int) -> None:
+        """Delete a location.
+
+        Args:
+            location_id: Grocy location ID
+
+        Raises:
+            GrocyError: If delete fails (e.g. location in use)
+        """
+        await self._request("DELETE", f"/objects/locations/{location_id}")
+        logger.info("Location deleted in Grocy", location_id=location_id)
 
     # ==================== Quantity Units ====================
 

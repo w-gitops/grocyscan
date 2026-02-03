@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.4-alpha] - 2026-02-02
+
+### Added
+
+- **Products page** - Richer list and full product details
+  - Columns: Qty (stock), Min (min stock), Unit, Location (name from Grocy); loads products, stock, locations, and quantity units in one go
+  - Click a row to open a detail popup: image, name, ID, description, location, quantity in stock, unit, min stock, calories, best-before defaults
+- **Recent scans** - Persisted across navigation
+  - Recent scans stored in NiceGUI user storage (`app.storage.user`); restored when returning to the scan page
+  - `storage_secret` set in `ui.run_with()` so user storage works (uses `grocyscan_secret_key`)
+- **LLM product formatting** - Descriptions, clean titles, brands
+  - Optimizer prompt extended to return clean title, short description, brand, and category
+  - Scan confirm uses LLM (when enabled) to format name/description/brand before creating product in Grocy
+  - Review popup: Description and Brand fields; "Use AI to clean title, description and brand" checkbox (default on)
+  - Grocy: create product with description and optional Brand userfield; fallback to description if userfield not supported
+  - Docs: `docs/GROCY-USERFIELDS.md` and README section for adding Brand userfield in Grocy
+- **Search-by-name provider order** - Brave preferred for name search
+  - New setting `name_search_provider_order` (default: brave, openfoodfacts) used only for name search
+  - Barcode/UPC lookup still uses `provider_order`; name search merges results with Brave first to avoid bad UPC results
+
+### Changed
+
+- **Products page** - Stock and location/unit names loaded with products; rows clickable for detail dialog
+- **Scan confirm API** - Accepts `description`, `brand`, `use_llm_enhancement`; runs LLM enhancement when enabled before creating product
+
 ## [0.3.3-alpha] - 2026-02-02
 
 ### Added

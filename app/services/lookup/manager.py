@@ -246,53 +246,66 @@ class LookupManager:
         return results[0]
 
     async def search_by_name(self, query: str, limit: int = 20) -> list[LookupResult]:
-        """Search for products by name across providers (OpenFoodFacts, Brave).
+        """Search for products by name across providers (Brave preferred over UPC sources).
 
-        Queries enabled providers that support name search and merges results.
+        Uses name_search_provider_order so Brave is preferred over OpenFoodFacts/UPC
+        results. Queries all name-search providers and merges results in that order
+        (first provider's results win on duplicate names).
 
         Args:
             query: Product name or search terms
             limit: Max results to return
 
         Returns:
-            list[LookupResult]: Merged results from all providers
+            list[LookupResult]: Merged results, ordered by name_search_provider_order
         """
         if not query or len(query.strip()) < 2:
             return []
         query = query.strip()
-        results: list[LookupResult] = []
-        seen_names: set[str] = set()
+        lookup_settings = _get_lookup_settings()
+        name_order = getattr(
+            lookup_settings,
+            "name_search_provider_order",
+            ["brave", "openfoodfacts"],
+        )
+        if not isinstance(name_order, list):
+            name_order = list(name_order) if name_order else ["brave", "openfoodfacts"]
 
-        # OpenFoodFacts and Brave support search_by_name
-        async def off_search() -> list[LookupResult]:
-            if "openfoodfacts" in self.providers:
-                return await self.providers["openfoodfacts"].search_by_name(
-                    query, limit
-                )
-            return []
-
-        async def brave_search() -> list[LookupResult]:
-            if "brave" in self.providers:
-                return await self.providers["brave"].search_by_name(query, limit)
+        # Providers that support search_by_name
+        name_search_providers = ["brave", "openfoodfacts"]
+        # Query each provider (in parallel)
+        async def search_one(name: str) -> list[LookupResult]:
+            if name in self.providers and hasattr(
+                self.providers[name], "search_by_name"
+            ):
+                return await self.providers[name].search_by_name(query, limit)
             return []
 
         try:
-            off_results, brave_results = await asyncio.gather(
-                off_search(), brave_search()
+            per_provider = await asyncio.gather(
+                *[search_one(p) for p in name_search_providers]
             )
-            for r in off_results + brave_results:
-                if not r.found or not r.name:
+            by_provider = dict(zip(name_search_providers, per_provider))
+        except Exception as e:
+            logger.warning("search_by_name failed", query=query, error=str(e))
+            return []
+
+        # Merge in name_search_provider_order (Brave first by default)
+        results: list[LookupResult] = []
+        seen_names: set[str] = set()
+        for provider_name in name_order:
+            if provider_name not in by_provider:
+                continue
+            for r in by_provider[provider_name]:
+                if not getattr(r, "found", True) or not getattr(r, "name", None):
                     continue
-                key = r.name.lower().strip()[:80]
+                key = (r.name or "").lower().strip()[:80]
                 if key in seen_names:
                     continue
                 seen_names.add(key)
                 results.append(r)
                 if len(results) >= limit:
-                    break
-        except Exception as e:
-            logger.warning("search_by_name failed", query=query, error=str(e))
-
+                    return results[:limit]
         return results[:limit]
 
     async def health_check(self) -> dict[str, bool]:

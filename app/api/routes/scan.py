@@ -15,8 +15,11 @@ from app.schemas.scan import (
     ScanRequest,
     ScanResponse,
 )
+from app.core.exceptions import GrocyError
 from app.services.barcode import BarcodeType, validate_barcode
 from app.services.grocy import grocy_client
+from app.services.llm import optimize_product_name
+from app.services.llm.client import llm_client
 from app.services.lookup import lookup_manager
 
 logger = get_logger(__name__)
@@ -220,17 +223,62 @@ async def confirm_scan(scan_id: str, confirm: ScanConfirmRequest) -> ScanConfirm
     grocy_product_id = None
     grocy_stock_id = None
 
+    # Resolve final name, description, brand (LLM enhancement if enabled)
+    name_for_grocy = confirm.name
+    description_for_grocy = confirm.description or confirm.category or ""
+    brand_for_grocy = (confirm.brand or "").strip() or None
+    if not brand_for_grocy and session.get("product"):
+        brand_for_grocy = (session["product"].get("brand") or "").strip() or None
+
+    if confirm.create_in_grocy and confirm.use_llm_enhancement:
+        try:
+            if await llm_client.is_available():
+                lookup_desc = (session.get("product") or {}).get("description") or ""
+                optimized = await optimize_product_name(
+                    name=confirm.name,
+                    brand=confirm.brand or (session.get("product") or {}).get("brand"),
+                    description=confirm.description or lookup_desc,
+                    raw_data={"category": confirm.category},
+                )
+                name_for_grocy = optimized.get("name") or name_for_grocy
+                description_for_grocy = (optimized.get("description") or "").strip() or description_for_grocy
+                if (optimized.get("brand") or "").strip():
+                    brand_for_grocy = (optimized.get("brand") or "").strip()
+                if (optimized.get("category") or "").strip() and not description_for_grocy:
+                    description_for_grocy = optimized.get("category", "")
+        except Exception as e:
+            logger.warning("LLM enhancement skipped", error=str(e))
+
+    # Build Grocy description: include brand line if we have brand (in case userfield not supported)
+    if brand_for_grocy and description_for_grocy and "Brand:" not in description_for_grocy:
+        description_for_grocy = f"Brand: {brand_for_grocy}\n\n{description_for_grocy}"
+    elif brand_for_grocy and not description_for_grocy:
+        description_for_grocy = f"Brand: {brand_for_grocy}"
+
     try:
         if confirm.create_in_grocy:
             # Create or get product in Grocy
             if grocy_product:
                 grocy_product_id = grocy_product.get("id")
             else:
-                # Create new product
-                created = await grocy_client.create_product(
-                    name=confirm.name,
-                    description=confirm.category,  # Use category as description for now
-                )
+                # Create new product (optional Brand userfield if Grocy has it)
+                userfields = {"Brand": brand_for_grocy} if brand_for_grocy else None
+                try:
+                    created = await grocy_client.create_product(
+                        name=name_for_grocy,
+                        description=description_for_grocy,
+                        userfields=userfields,
+                    )
+                except GrocyError as e:
+                    # Some Grocy versions reject userfields in POST; retry without
+                    if userfields and "userfield" in str(e).lower():
+                        logger.warning("Grocy rejected userfields, creating product without Brand userfield")
+                        created = await grocy_client.create_product(
+                            name=name_for_grocy,
+                            description=description_for_grocy,
+                        )
+                    else:
+                        raise
                 grocy_product_id = created.get("created_object_id") or created.get("id")
 
                 # Add barcode to product (only if we have a barcode, e.g. not from name search)

@@ -89,6 +89,10 @@ All configuration is via environment variables. See `.env.example` for all optio
 | `LLM_API_URL` | LLM API endpoint | `http://localhost:11434/v1` |
 | `LLM_MODEL` | LLM model name | `llama3.1:8b` |
 
+### Grocy custom fields (Brand)
+
+To store **Brand** in Grocy when adding products via scan, add a userfield named `Brand` for the `products` entity in Grocy (Settings → Userfields). See [docs/GROCY-USERFIELDS.md](docs/GROCY-USERFIELDS.md) for step-by-step setup and how LLM enhancement uses it.
+
 ### Lookup Providers
 
 Configure provider order and API keys:
