@@ -1,63 +1,63 @@
 ---
-task: Homebot Phase 2 - Inventory Core
-test_command: pytest tests/phase2/ tests/phase1/ -v --tb=short
+task: Homebot Phase 3 - Device & UI
+test_command: pytest tests/phase3/ tests/phase2/ tests/phase1/ -v --tb=short
 browser_validation: false
 ---
 
-# Task: Homebot Phase 2 - Inventory Core
+# Task: Homebot Phase 3 - Device & UI
 
-Products, locations, stock tracking, and barcode scanning.
+Device registration, preferences, and UI (Vue/Quasar or NiceGUI validation).
 
-**PRD Reference:** [prd/80.12-ralph-phase-2-inventory.md](prd/80.12-ralph-phase-2-inventory.md)
+**PRD Reference:** [prd/80.13-ralph-phase-3-device-ui.md](prd/80.13-ralph-phase-3-device-ui.md)
 
 ## Success Criteria
 
-### Products
+### Frontend Scaffold
 
-- [x] Products table with all required fields <!-- group: 1 -->
-- [x] Product CRUD endpoints <!-- group: 1 -->
-- [x] Product search by name, barcode, category <!-- group: 1 -->
+- [ ] **[1]** Vue 3 + Quasar project initialized (Option B) or use NiceGUI (Option A)
+- [ ] **[2]** Pinia store configured (auth, device)
+- [ ] **[3]** Router with auth guards
 
-### Locations
+### Device Management
 
-- [x] Locations table with hierarchy support <!-- group: 2 -->
-- [x] Location closure table for efficient queries <!-- group: 2 -->
-- [x] Location CRUD with hierarchy management <!-- group: 2 -->
+- [x] **[4]** Device registration on first visit <!-- POST /api/v2/devices -->
+- [x] **[5]** Device preferences stored <!-- PATCH /api/v2/devices/me -->
+- [x] **[6]** Device fingerprinting <!-- X-Device-ID, same fingerprint = same device -->
 
-### Stock Management
+### Scanning Interface
 
-- [x] Stock tracking table <!-- group: 3 -->
-- [x] Add stock endpoint <!-- group: 3 -->
-- [x] Consume stock endpoint <!-- group: 3 -->
-- [x] Transfer stock between locations <!-- group: 3 -->
+- [ ] **[7]** Camera barcode scanner works
+- [ ] **[8]** Action mode selection
+- [ ] **[9]** Quick actions after scan
 
-### Barcode Lookup
+### Product Views
 
-- [x] OpenFoodFacts integration <!-- group: 4 -->
-- [x] UPC Database fallback (via existing lookup manager) <!-- group: 4 -->
+- [ ] **[10]** Product list with search
+- [ ] **[11]** Product detail view
+- [ ] **[12]** PWA installable
 
 ---
 
 ## Context
 
 - **Deploy Target:** `192.168.200.37` via SSH (root)
-- **Install Path:** `/opt/grocyscan/` (or `/opt/homebot/`)
-- **Service:** `grocyscan` (systemd)
-- **Port:** 3334
+- **Install Path:** `/opt/grocyscan/`
+- **Port:** 3334 (API), 3335 (Vue target)
+- **Option A:** Validate with existing NiceGUI at :3334 first.
+- **Option B:** Build Vue/Quasar frontend at :3335.
 
 ## Technical Notes
 
-- Phase 2 migrations: 0003 (products+barcodes), 0004 (locations+closure), 0005 (stock+stock_transactions) in homebot schema.
-- v2 API requires `X-Tenant-ID` header and JWT or `HOMEBOT-API-KEY` for inventory endpoints.
-- Session middleware allows `/api/v2/*` through; route dependencies enforce Bearer/API key.
+- Migration 0006: homebot.devices (fingerprint, default_location_id, default_action, preferences).
+- v2 API: POST /api/v2/devices (register), GET/PATCH /api/v2/devices/me (X-Device-ID required for me).
 
 ## Phase Navigation
 
 | Phase | Document | Status |
 |-------|----------|--------|
 | 1 | [Foundation](prd/80.11-ralph-phase-1-foundation.md) | Complete |
-| 2 | [Inventory](prd/80.12-ralph-phase-2-inventory.md) | **Current** |
-| 3 | [Device UI](prd/80.13-ralph-phase-3-device-ui.md) | Pending |
+| 2 | [Inventory](prd/80.12-ralph-phase-2-inventory.md) | Complete |
+| 3 | [Device & UI](prd/80.13-ralph-phase-3-device-ui.md) | **Current** |
 | 4 | [Labels & QR](prd/80.14-ralph-phase-4-labels-qr.md) | Pending |
 | 5 | [Recipes](prd/80.15-ralph-phase-5-recipes.md) | Pending |
 | 6 | [Intelligence](prd/80.16-ralph-phase-6-intelligence.md) | Pending |

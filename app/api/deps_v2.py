@@ -87,3 +87,15 @@ async def get_db_homebot(
     """Database session with app.tenant_id set for RLS."""
     await db.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": str(tenant_id)})
     yield db
+
+
+async def get_device_fingerprint(
+    x_device_id: str | None = Header(None, alias="X-Device-ID"),
+) -> str:
+    """Require X-Device-ID header (device fingerprint) for device/me endpoints."""
+    if not x_device_id or not x_device_id.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Device-ID header required",
+        )
+    return x_device_id.strip()

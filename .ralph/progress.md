@@ -43,7 +43,9 @@ Criteria:
 - RLS and tenant context via X-Tenant-ID and get_db_homebot.
 
 ### Phase 3: Device & UI
-**Status:** Pending (requires Phase 2)
+**Status:** In progress (device backend done)
+
+- Migration 0006: homebot.devices. v2 API: POST /api/v2/devices, GET/PATCH /api/v2/devices/me (X-Device-ID). Criteria 4,5,6 done. Frontend (1,2,3) and scanning (7–12) pending (Option A: NiceGUI validation; Option B: Vue/Quasar).
 
 ### Phase 4: Labels & QR
 **Status:** Pending (requires Phase 3)
@@ -64,6 +66,7 @@ Criteria:
 ### 2026-02-03
 - Phase 1 Foundation implemented: homebot schema migration (tenants, users, tenant_memberships + RLS), API v2 (JWT login, API key), root /health, correlation ID logging, Phase 1 tests (tests/phase1/). All 14 Phase 1 tests pass (11 passed, 3 DB tests skipped without DATABASE_URL=...homebot).
 - Phase 2 Inventory Core: migrations 0003 (products+barcodes), 0004 (locations+closure), 0005 (stock+stock_transactions); homebot_models; v2 routes products, locations, stock, lookup; tenant context (X-Tenant-ID, get_db_homebot); SessionMiddleware allows /api/v2/* to use route auth. Phase 2 tests added; all 17 passed (3 skipped).
+- Phase 3 Device backend: migration 0006 (homebot.devices), HomebotDevice model, POST /api/v2/devices (register), GET/PATCH /api/v2/devices/me (X-Device-ID), device preferences; Phase 3 tests (test_devices.py). Criteria 4,5,6 complete.
 
 ---
 

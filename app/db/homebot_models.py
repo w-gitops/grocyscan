@@ -127,3 +127,24 @@ class HomebotStockTransaction(Base):
     to_location_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.locations.id"))
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class HomebotDevice(Base):
+    """Device registration and preferences in homebot schema (Phase 3)."""
+
+    __tablename__ = "devices"
+    __table_args__ = {"schema": "homebot"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.tenants.id"), nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.users.id"))
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(255), nullable=False)
+    device_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    default_location_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.locations.id"))
+    default_action: Mapped[str] = mapped_column(String(50), nullable=False, default="add_stock")
+    scanner_mode: Mapped[str] = mapped_column(String(50), nullable=False, default="camera")
+    preferences: Mapped[dict | None] = mapped_column(JSON, default=dict)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
