@@ -1,67 +1,62 @@
 ---
-task: Homebot Phase 1 - Foundation
-test_command: pytest tests/phase1/ -v --tb=short
+task: Homebot Phase 2 - Inventory Core
+test_command: pytest tests/phase2/ tests/phase1/ -v --tb=short
 browser_validation: false
 ---
 
-# Task: Homebot Phase 1 - Foundation
+# Task: Homebot Phase 2 - Inventory Core
 
-Build the core infrastructure for Homebot: PostgreSQL with multi-tenant RLS, FastAPI application skeleton, and JWT/API key authentication.
+Products, locations, stock tracking, and barcode scanning.
 
-**PRD Reference:** [prd/80.11-ralph-phase-1-foundation.md](prd/80.11-ralph-phase-1-foundation.md)
+**PRD Reference:** [prd/80.12-ralph-phase-2-inventory.md](prd/80.12-ralph-phase-2-inventory.md)
 
 ## Success Criteria
 
-### Database & Schema
+### Products
 
-- [x] PostgreSQL database created with `homebot` schema <!-- group: 1 -->
-- [x] Tenants table with RLS enabled <!-- group: 1 -->
-- [x] Users table with tenant membership <!-- group: 1 -->
-- [x] Alembic migrations configured <!-- group: 1 -->
+- [x] Products table with all required fields <!-- group: 1 -->
+- [x] Product CRUD endpoints <!-- group: 1 -->
+- [x] Product search by name, barcode, category <!-- group: 1 -->
 
-### Authentication
+### Locations
 
-- [x] JWT authentication working <!-- group: 2 -->
-- [x] API key authentication for service accounts <!-- group: 2 -->
-- [x] Password hashing with bcrypt <!-- group: 2 -->
+- [x] Locations table with hierarchy support <!-- group: 2 -->
+- [x] Location closure table for efficient queries <!-- group: 2 -->
+- [x] Location CRUD with hierarchy management <!-- group: 2 -->
 
-### API Structure
+### Stock Management
 
-- [x] FastAPI app starts without errors <!-- group: 3 -->
-- [x] OpenAPI spec generated at `/docs` <!-- group: 3 -->
-- [x] Basic logging configured <!-- group: 3 -->
+- [x] Stock tracking table <!-- group: 3 -->
+- [x] Add stock endpoint <!-- group: 3 -->
+- [x] Consume stock endpoint <!-- group: 3 -->
+- [x] Transfer stock between locations <!-- group: 3 -->
+
+### Barcode Lookup
+
+- [x] OpenFoodFacts integration <!-- group: 4 -->
+- [x] UPC Database fallback (via existing lookup manager) <!-- group: 4 -->
 
 ---
 
 ## Context
 
 - **Deploy Target:** `192.168.200.37` via SSH (root)
-- **Install Path:** `/opt/homebot/`
-- **Service:** `homebot` (systemd)
+- **Install Path:** `/opt/grocyscan/` (or `/opt/homebot/`)
+- **Service:** `grocyscan` (systemd)
 - **Port:** 3334
 
 ## Technical Notes
 
-See [prd/80.11-ralph-phase-1-foundation.md](prd/80.11-ralph-phase-1-foundation.md) for:
-- Detailed acceptance criteria with test commands
-- Files to create/modify
-- RLS setup patterns
-- Environment variables
-
-## Environment Variables
-
-```bash
-DATABASE_URL=postgresql://homebot:password@localhost:5432/homebot
-SECRET_KEY=your-secret-key-here
-HOMEBOT_DEBUG=false
-```
+- Phase 2 migrations: 0003 (products+barcodes), 0004 (locations+closure), 0005 (stock+stock_transactions) in homebot schema.
+- v2 API requires `X-Tenant-ID` header and JWT or `HOMEBOT-API-KEY` for inventory endpoints.
+- Session middleware allows `/api/v2/*` through; route dependencies enforce Bearer/API key.
 
 ## Phase Navigation
 
 | Phase | Document | Status |
 |-------|----------|--------|
-| 1 | [Foundation](prd/80.11-ralph-phase-1-foundation.md) | **Current** |
-| 2 | [Inventory](prd/80.12-ralph-phase-2-inventory.md) | Pending |
+| 1 | [Foundation](prd/80.11-ralph-phase-1-foundation.md) | Complete |
+| 2 | [Inventory](prd/80.12-ralph-phase-2-inventory.md) | **Current** |
 | 3 | [Device UI](prd/80.13-ralph-phase-3-device-ui.md) | Pending |
 | 4 | [Labels & QR](prd/80.14-ralph-phase-4-labels-qr.md) | Pending |
 | 5 | [Recipes](prd/80.15-ralph-phase-5-recipes.md) | Pending |

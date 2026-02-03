@@ -54,6 +54,10 @@ class SessionMiddleware(BaseHTTPMiddleware):
             request.state.username = "admin"
             return await call_next(request)
 
+        # API v2 uses Bearer / HOMEBOT-API-KEY; let route dependencies enforce auth
+        if request.url.path.startswith("/api/v2/"):
+            return await call_next(request)
+
         # Get session cookie
         session_id = request.cookies.get("session_id")
         if not session_id:

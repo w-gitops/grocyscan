@@ -1,9 +1,15 @@
-"""API v2 dependencies: JWT and API key auth (Phase 1)."""
+"""API v2 dependencies: JWT and API key auth (Phase 1), tenant context (Phase 2)."""
 
-from fastapi import Header, HTTPException, status
+import uuid
+from collections.abc import AsyncGenerator
+
+from fastapi import Depends, Header, HTTPException, status
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.v2.auth import decode_jwt
 from app.config import settings
+from app.db.database import get_db
 
 
 def _valid_api_keys() -> set[str]:
@@ -54,3 +60,30 @@ async def require_api_key(
             detail="Invalid API key",
         )
     return "api-key"
+
+
+async def get_tenant_id_v2(
+    x_tenant_id: str | None = Header(None, alias="X-Tenant-ID"),
+) -> uuid.UUID:
+    """Require X-Tenant-ID header for v2 inventory APIs (RLS context)."""
+    if not x_tenant_id or not x_tenant_id.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Tenant-ID header required",
+        )
+    try:
+        return uuid.UUID(x_tenant_id.strip())
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid X-Tenant-ID format",
+        ) from None
+
+
+async def get_db_homebot(
+    tenant_id: uuid.UUID = Depends(get_tenant_id_v2),
+    db: AsyncSession = Depends(get_db),
+) -> AsyncGenerator[AsyncSession, None]:
+    """Database session with app.tenant_id set for RLS."""
+    await db.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": str(tenant_id)})
+    yield db

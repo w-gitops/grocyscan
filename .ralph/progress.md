@@ -36,7 +36,11 @@ Criteria:
 - [x] [10] Basic logging (correlation ID middleware)
 
 ### Phase 2: Inventory Core
-**Status:** Pending (requires Phase 1)
+**Status:** Complete
+
+- Migrations 0003 (products+barcodes), 0004 (locations+closure), 0005 (stock+stock_transactions) in homebot schema.
+- v2 API: products (CRUD, search), locations (CRUD, descendants), stock (add, consume, transfer), lookup (barcode).
+- RLS and tenant context via X-Tenant-ID and get_db_homebot.
 
 ### Phase 3: Device & UI
 **Status:** Pending (requires Phase 2)
@@ -59,6 +63,7 @@ Criteria:
 
 ### 2026-02-03
 - Phase 1 Foundation implemented: homebot schema migration (tenants, users, tenant_memberships + RLS), API v2 (JWT login, API key), root /health, correlation ID logging, Phase 1 tests (tests/phase1/). All 14 Phase 1 tests pass (11 passed, 3 DB tests skipped without DATABASE_URL=...homebot).
+- Phase 2 Inventory Core: migrations 0003 (products+barcodes), 0004 (locations+closure), 0005 (stock+stock_transactions); homebot_models; v2 routes products, locations, stock, lookup; tenant context (X-Tenant-ID, get_db_homebot); SessionMiddleware allows /api/v2/* to use route auth. Phase 2 tests added; all 17 passed (3 skipped).
 
 ---
 
