@@ -2,120 +2,53 @@
 task: Homebot Phase 1 - Foundation
 test_command: pytest tests/phase1/ -v --tb=short
 browser_validation: false
-base_url: http://localhost:3334
-phase: 1
-prd_reference: prd/80.11-ralph-phase-1-foundation.md
 ---
 
 # Task: Homebot Phase 1 - Foundation
 
 Build the core infrastructure for Homebot: PostgreSQL with multi-tenant RLS, FastAPI application skeleton, and JWT/API key authentication.
 
+**PRD Reference:** [prd/80.11-ralph-phase-1-foundation.md](prd/80.11-ralph-phase-1-foundation.md)
+
 ## Success Criteria
 
 ### Database & Schema
 
-- [ ] **[1] [CRITICAL]** PostgreSQL database created with `homebot` schema
-  - Test: `SELECT current_database()` returns `homebot`
-
-- [ ] **[2] [CRITICAL]** Tenants table with RLS enabled
-  - Test: `\d tenants` shows id, name, slug, settings columns
-  - Test: RLS policy exists on tenants table
-
-- [ ] **[3] [CRITICAL]** Users table with tenant membership
-  - Test: `\d users` shows id, email, password_hash, default_tenant_id
-  - Test: `\d tenant_memberships` exists with user_id, tenant_id, role
-
-- [ ] **[4] [CORE]** Alembic migrations configured
-  - Test: `alembic current` shows head revision
-  - Test: `alembic upgrade head` runs without error
+- [ ] PostgreSQL database created with `homebot` schema <!-- group: 1 -->
+- [ ] Tenants table with RLS enabled <!-- group: 1 -->
+- [ ] Users table with tenant membership <!-- group: 1 -->
+- [ ] Alembic migrations configured <!-- group: 1 -->
 
 ### Authentication
 
-- [ ] **[5] [CRITICAL]** JWT authentication working
-  - Test: `POST /api/v2/auth/login` returns access_token
-  - Test: Protected endpoint rejects invalid token
-
-- [ ] **[6] [CRITICAL]** API key authentication for service accounts
-  - Test: `HOMEBOT-API-KEY` header authenticates requests
-  - Test: Invalid API key returns 401
-
-- [ ] **[7] [CORE]** Password hashing with bcrypt
-  - Test: Passwords stored as bcrypt hashes
-  - Test: Login verifies password correctly
+- [ ] JWT authentication working <!-- group: 2 -->
+- [ ] API key authentication for service accounts <!-- group: 2 -->
+- [ ] Password hashing with bcrypt <!-- group: 2 -->
 
 ### API Structure
 
-- [ ] **[8] [CRITICAL]** FastAPI app starts without errors
-  - Test: `uvicorn app.main:app` starts on port 3334
-  - Test: `GET /health` returns 200
-
-- [ ] **[9] [CORE]** OpenAPI spec generated at `/docs`
-  - Test: `GET /docs` returns Swagger UI
-  - Test: `GET /openapi.json` returns valid OpenAPI spec
-
-- [ ] **[10] [FLEX]** Basic logging configured
-  - Test: Requests logged with correlation ID
-  - Test: Log level configurable via env var
+- [ ] FastAPI app starts without errors <!-- group: 3 -->
+- [ ] OpenAPI spec generated at `/docs` <!-- group: 3 -->
+- [ ] Basic logging configured <!-- group: 3 -->
 
 ---
 
+## Context
+
+- **Deploy Target:** `192.168.200.37` via SSH (root)
+- **Install Path:** `/opt/homebot/`
+- **Service:** `homebot` (systemd)
+- **Port:** 3334
+
 ## Technical Notes
 
-### Files to Create
+See [prd/80.11-ralph-phase-1-foundation.md](prd/80.11-ralph-phase-1-foundation.md) for:
+- Detailed acceptance criteria with test commands
+- Files to create/modify
+- RLS setup patterns
+- Environment variables
 
-```
-app/
-├── main.py                 # FastAPI app entry point
-├── config.py               # Settings and environment
-├── database.py             # SQLAlchemy setup with RLS
-├── models/
-│   ├── __init__.py
-│   ├── tenant.py           # Tenant model
-│   └── user.py             # User model
-├── api/
-│   ├── __init__.py
-│   ├── deps.py             # Dependencies (auth, db, tenant context)
-│   └── routes/
-│       ├── __init__.py
-│       ├── auth.py         # Login, token refresh
-│       └── health.py       # Health check
-├── services/
-│   ├── __init__.py
-│   └── auth.py             # Auth service (JWT, bcrypt)
-└── schemas/
-    ├── __init__.py
-    ├── auth.py             # Login request/response
-    └── user.py             # User schemas
-
-migrations/
-├── env.py
-└── versions/
-    └── 001_initial_schema.py
-
-tests/
-└── phase1/
-    ├── conftest.py         # Test fixtures
-    ├── test_database.py
-    ├── test_auth.py
-    └── test_api.py
-```
-
-### RLS Setup Pattern
-
-```sql
--- Enable RLS on table
-ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
-
--- Create policy
-CREATE POLICY tenant_isolation ON tenants
-    USING (id = current_setting('app.tenant_id')::uuid);
-
--- Set tenant context before queries
-SET app.tenant_id = 'tenant-uuid-here';
-```
-
-### Environment Variables
+## Environment Variables
 
 ```bash
 DATABASE_URL=postgresql://homebot:password@localhost:5432/homebot
@@ -123,25 +56,14 @@ SECRET_KEY=your-secret-key-here
 HOMEBOT_DEBUG=false
 ```
 
----
+## Phase Navigation
 
-## Dependencies
-
-- None (this is the foundation phase)
-
----
-
-## Phase Completion
-
-When all [CRITICAL] criteria pass:
-1. Commit: `git add -A && git commit -m "ralph: Phase 1 complete - Foundation"`
-2. Update this file to Phase 2 from `prd/80.12-ralph-phase-2-inventory.md`
-3. Start fresh conversation for next phase
-
----
-
-## Navigation
-
-- **Phase Document:** [prd/80.11-ralph-phase-1-foundation.md](prd/80.11-ralph-phase-1-foundation.md)
-- **Next Phase:** [prd/80.12-ralph-phase-2-inventory.md](prd/80.12-ralph-phase-2-inventory.md)
-- **Overview:** [prd/80.10-ralph-phases-overview.md](prd/80.10-ralph-phases-overview.md)
+| Phase | Document | Status |
+|-------|----------|--------|
+| 1 | [Foundation](prd/80.11-ralph-phase-1-foundation.md) | **Current** |
+| 2 | [Inventory](prd/80.12-ralph-phase-2-inventory.md) | Pending |
+| 3 | [Device UI](prd/80.13-ralph-phase-3-device-ui.md) | Pending |
+| 4 | [Labels & QR](prd/80.14-ralph-phase-4-labels-qr.md) | Pending |
+| 5 | [Recipes](prd/80.15-ralph-phase-5-recipes.md) | Pending |
+| 6 | [Intelligence](prd/80.16-ralph-phase-6-intelligence.md) | Pending |
+| 7 | [Documents](prd/80.17-ralph-phase-7-documents.md) | Pending |

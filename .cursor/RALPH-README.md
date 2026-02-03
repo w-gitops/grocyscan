@@ -1,54 +1,142 @@
-# Ralph Wiggum in GrocyScan
+# Ralph Wiggum for Homebot
 
-Ralph Wiggum methodology is **installed** from the **cursor-command** repo and wired into this project so you can use it when you want.
+This project uses the [Ralph Wiggum autonomous development technique](https://ghuntley.com/ralph/) for building Homebot.
 
-## What’s Installed
+## Prerequisites
 
-| Item | Location | Purpose |
-|------|----------|---------|
-| **Cursor rule** | `.cursor/rules/ralph-wiggum.mdc` | Main protocol (startup, work loop, browser tools, signals). Applied by default (`alwaysApply: true`). |
-| **Optional rule** | `.cursor/rules/ralph-optional.mdc` | Explains when/how to use Ralph; `alwaysApply: false`. Enable manually if you prefer Ralph only for some chats. |
-| **Skill** | `.cursor/skills/ralph-wiggum/` | Full methodology: `SKILL.md` plus `references/` (task format, state files, browser tools, PRD template). |
-| **State** | `.ralph/` | `progress.md`, `guardrails.md`, `screenshots/` (and optional logs). |
-| **Task file** | `RALPH_TASK.md` (root) | Define your task and success criteria here. |
+1. **cursor-agent CLI** - Install from Cursor
+   ```bash
+   curl https://cursor.com/install -fsS | bash
+   ```
 
-## Using Ralph
+2. **gum** (optional, for interactive UI)
+   ```bash
+   brew install gum  # macOS
+   # or let the installer prompt you
+   ```
 
-### Default (always on)
+3. **Git repo** - Already set up
 
-The rule `.cursor/rules/ralph-wiggum.mdc` is set to `alwaysApply: true`, so the agent already follows the Ralph protocol (read RALPH_TASK.md, guardrails, progress, one criterion at a time, commit with `ralph: [N]`, etc.).
+## Quick Start
 
-To run a Ralph session:
-
-1. Edit `RALPH_TASK.md` with your task and unchecked criteria.
-2. Start an Agent chat.
-3. Say: **"Follow the Ralph Wiggum protocol. Work on RALPH_TASK.md"** (or similar).
-
-The agent will read guardrails and progress, then work through criteria.
-
-### Optional (use only when you want)
-
-If you prefer Ralph only for certain chats:
-
-1. In `.cursor/rules/ralph-wiggum.mdc`, set **`alwaysApply: false`**.
-2. When you want a Ralph session, enable the **"Ralph Wiggum"** rule in Cursor (e.g. rule picker / rules for this workspace).
-3. Or open `RALPH_TASK.md` / `.ralph/` so the optional rule (and its globs) can apply.
-
-The optional rule (`.cursor/rules/ralph-optional.mdc`) documents this and points to the skill.
-
-## Updating from cursor-command
-
-Source repo: `C:\git\cursor-command`.
-
-- **Rule**: Copy `cursor-command/rules/ralph-wiggum.mdc` into `.cursor/rules/`. Merge any GrocyScan-specific edits (e.g. cursor-browser-extension) back in.
-- **Skill**: Copy `cursor-command/skills/ralph-wiggum/` (SKILL.md and `references/`) into `.cursor/skills/ralph-wiggum/`.
-
-## Re-bootstrap (fresh install)
-
-From WSL or Git Bash, from the grocyscan repo root:
+### Option 1: Interactive Setup (Recommended)
 
 ```bash
-bash /c/git/cursor-command/scripts/init-ralph.sh .
+./.cursor/ralph-scripts/ralph-setup.sh
 ```
 
-This recreates `.ralph/` state, rule, and a sample `RALPH_TASK.md` if missing. It may overwrite `.cursor/rules/ralph-wiggum.mdc` with the upstream version; re-apply GrocyScan-specific browser-extension details if needed.
+This gives you a beautiful gum-based UI to:
+- Select model (opus-4.5-thinking, sonnet, gpt-5.2, etc.)
+- Set max iterations
+- Choose options (branch, PR, parallel mode)
+
+### Option 2: CLI Mode
+
+```bash
+# Basic run with defaults
+./.cursor/ralph-scripts/ralph-loop.sh
+
+# Custom iterations and model
+./.cursor/ralph-scripts/ralph-loop.sh -n 50 -m gpt-5.2-high
+
+# Skip confirmation
+./.cursor/ralph-scripts/ralph-loop.sh -y
+
+# Create branch and PR when done
+./.cursor/ralph-scripts/ralph-loop.sh --branch feature/phase1 --pr -y
+```
+
+### Option 3: Parallel Execution
+
+```bash
+# Run 3 agents in parallel (tasks with <!-- group: N --> annotations)
+./.cursor/ralph-scripts/ralph-loop.sh --parallel
+
+# Run 5 agents in parallel
+./.cursor/ralph-scripts/ralph-loop.sh --parallel --max-parallel 5
+
+# Parallel with integration PR
+./.cursor/ralph-scripts/ralph-loop.sh --parallel --max-parallel 5 --branch feature/phase1 --pr
+```
+
+### Option 4: Single Iteration (Testing)
+
+```bash
+# Run ONE iteration to test before going AFK
+./.cursor/ralph-scripts/ralph-once.sh
+```
+
+## How It Works
+
+1. **RALPH_TASK.md** defines the task with checkbox criteria
+2. Ralph loops, running `cursor-agent` with fresh context each iteration
+3. Progress persists in **files and git**, not LLM memory
+4. At ~80k tokens, context rotates to fresh agent
+5. Loop continues until all `[ ]` become `[x]`
+
+## Task Groups (Parallel)
+
+Use `<!-- group: N -->` to control execution order:
+
+```markdown
+- [ ] Create database schema <!-- group: 1 -->
+- [ ] Create User model <!-- group: 1 -->
+- [ ] Add auth endpoints <!-- group: 2 -->
+- [ ] Update README  # no annotation = runs LAST
+```
+
+Groups run sequentially, tasks within groups run in parallel.
+
+## Monitoring
+
+```bash
+# Watch activity in real-time
+tail -f .ralph/activity.log
+
+# Check for errors
+cat .ralph/errors.log
+
+# See progress
+cat .ralph/progress.md
+```
+
+## State Files
+
+| File | Purpose |
+|------|---------|
+| `RALPH_TASK.md` | Task definition with checkbox criteria |
+| `.ralph/progress.md` | Session history (what's been accomplished) |
+| `.ralph/guardrails.md` | Lessons learned (read FIRST before acting) |
+| `.ralph/activity.log` | Tool call log with token counts |
+| `.ralph/errors.log` | Failure log for debugging |
+
+## Signals
+
+The agent outputs signals that the loop detects:
+
+| Signal | Meaning |
+|--------|---------|
+| `<ralph>COMPLETE</ralph>` | All criteria satisfied |
+| `<ralph>GUTTER</ralph>` | Agent is stuck, needs help |
+
+## Phase Workflow
+
+Homebot is built in 7 phases. After each phase:
+
+1. Ralph completes all criteria
+2. Commit and push
+3. Update `RALPH_TASK.md` with next phase (copy from `prd/80.XX-ralph-phase-N-*.md`)
+4. Run Ralph again
+
+## Tips
+
+- **Don't fight the gutter**: If stuck 3x on same issue, the context is polluted. Start fresh.
+- **Commit often**: The agent's commits ARE its memory across rotations.
+- **Trust the files**: Progress is in `.ralph/` and git, not conversation history.
+- **Use groups**: For parallel execution, annotate independent tasks.
+
+## Learn More
+
+- [Original technique](https://ghuntley.com/ralph/) - Geoffrey Huntley
+- [Context engineering](https://ghuntley.com/gutter/) - The malloc/free metaphor
+- [PRD Overview](prd/80.10-ralph-phases-overview.md) - Phase breakdown
