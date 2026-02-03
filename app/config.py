@@ -1,9 +1,22 @@
 """Application configuration using Pydantic Settings."""
 
+import tomllib
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _get_version() -> str:
+    """Read version from pyproject.toml (single source of truth)."""
+    try:
+        pyproject = Path(__file__).parent.parent / "pyproject.toml"
+        with open(pyproject, "rb") as f:
+            data = tomllib.load(f)
+        return data["project"]["version"]
+    except Exception:
+        return "0.0.0-dev"
 
 
 class Settings(BaseSettings):
@@ -17,7 +30,7 @@ class Settings(BaseSettings):
     )
 
     # Application Core
-    grocyscan_version: str = "0.1.0"
+    grocyscan_version: str = _get_version()
     grocyscan_env: Literal["development", "staging", "production"] = "development"
     grocyscan_debug: bool = False
     grocyscan_host: str = "0.0.0.0"

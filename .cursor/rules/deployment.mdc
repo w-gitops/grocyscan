@@ -1,0 +1,37 @@
+---
+description: Remote development server configuration for GrocyScan
+alwaysApply: true
+---
+
+# Remote Development Server
+
+The remote development server for this project is:
+
+```
+Host: 192.168.200.37
+User: root
+SSH: root@192.168.200.37
+```
+
+## Deployment
+
+- Use `.\scripts\deploy.ps1` (Windows) or `./scripts/deploy.sh` (Linux/Mac) to deploy
+- The application is installed at `/opt/grocyscan` on the remote server
+- Service name: `grocyscan` (managed by systemd)
+- Application port: 3334
+
+## Common Commands
+
+```bash
+# SSH into the server
+ssh root@192.168.200.37
+
+# Check service status
+ssh root@192.168.200.37 "systemctl status grocyscan"
+
+# View logs
+ssh root@192.168.200.37 "journalctl -u grocyscan -f"
+
+# Restart service
+ssh root@192.168.200.37 "systemctl restart grocyscan"
+```

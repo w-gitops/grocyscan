@@ -13,6 +13,7 @@ class ScanRequest(BaseModel):
     barcode: str = Field(..., min_length=1, max_length=100)
     location_code: str | None = Field(None, description="Location code (e.g., LOC-PANTRY-01)")
     input_method: str = Field("manual", description="How barcode was entered: camera, scanner, manual")
+    skip_cache: bool = Field(False, description="Skip cache and query providers directly")
 
 
 class ProductInfo(BaseModel):

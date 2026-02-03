@@ -36,7 +36,10 @@ LOCATION_PATTERN = re.compile(r"^LOC-([A-Z0-9]+)-(\d+)$", re.IGNORECASE)
 def calculate_ean_checksum(digits: str) -> int:
     """Calculate EAN/UPC checksum digit.
 
-    Uses the standard modulo 10 algorithm with weights 1 and 3.
+    Uses the standard modulo 10 algorithm.
+    - For EAN-13 (12 digits): weights 1, 3, 1, 3... (odd positions weight 1)
+    - For UPC-A (11 digits): weights 3, 1, 3, 1... (odd positions weight 3)
+    - For EAN-8 (7 digits): weights 3, 1, 3, 1... (odd positions weight 3)
 
     Args:
         digits: The barcode digits without the check digit
@@ -45,8 +48,17 @@ def calculate_ean_checksum(digits: str) -> int:
         int: The check digit (0-9)
     """
     total = 0
+    # EAN-13 uses 1,3,1,3... pattern; UPC-A and EAN-8 use 3,1,3,1... pattern
+    # The difference is determined by the length: 12 digits = EAN-13, others = UPC pattern
+    start_with_one = len(digits) == 12  # EAN-13 pattern
+    
     for i, digit in enumerate(digits):
-        weight = 1 if i % 2 == 0 else 3
+        if start_with_one:
+            # EAN-13: positions 1,3,5... (0-indexed: 0,2,4...) get weight 1
+            weight = 1 if i % 2 == 0 else 3
+        else:
+            # UPC-A/EAN-8: positions 1,3,5... (0-indexed: 0,2,4...) get weight 3
+            weight = 3 if i % 2 == 0 else 1
         total += int(digit) * weight
     return (10 - (total % 10)) % 10
 
