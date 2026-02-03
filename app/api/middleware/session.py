@@ -13,9 +13,12 @@ logger = get_logger(__name__)
 
 # Paths that don't require authentication
 PUBLIC_PATHS = {
+    "/health",
     "/api/health",
     "/api/health/detailed",
     "/api/auth/login",
+    "/api/v2/health",
+    "/api/v2/auth/login",
     "/docs",
     "/redoc",
     "/openapi.json",

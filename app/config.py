@@ -106,6 +106,16 @@ class Settings(BaseSettings):
     session_timeout_hours: int = 24
     session_absolute_timeout_days: int = 7
 
+    # Homebot Phase 1: JWT and API key (comma-separated list of valid API keys)
+    secret_key: str = Field(
+        default="your-secret-key-here",
+        description="Secret key for JWT signing (set SECRET_KEY in production)",
+    )
+    homebot_api_keys: str = Field(
+        default="",
+        description="Comma-separated API keys for service account auth (HOMEBOT-API-KEY header)",
+    )
+
     external_api_enabled: bool = True
     external_api_rate_limit: int = 100
 
@@ -153,6 +163,11 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         """Check if running in production mode."""
         return self.grocyscan_env == "production"
+
+    @property
+    def api_key_list(self) -> list[str]:
+        """Valid API keys for HOMEBOT-API-KEY header."""
+        return [k.strip() for k in self.homebot_api_keys.split(",") if k.strip()]
 
 
 # Global settings instance

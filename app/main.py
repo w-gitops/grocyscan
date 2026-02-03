@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.middleware.correlation_id import CorrelationIdMiddleware
 from app.api.middleware.rate_limit import RateLimitMiddleware
 from app.api.middleware.session import SessionMiddleware
 from app.api.routes import api_router
@@ -149,9 +150,16 @@ def create_app() -> FastAPI:
 
     # Add session middleware
     app.add_middleware(SessionMiddleware)
+    # Correlation ID (Phase 1: requests logged with correlation ID)
+    app.add_middleware(CorrelationIdMiddleware)
 
     # Include API routes
     app.include_router(api_router, prefix="/api")
+
+    # Root health (Phase 1: GET /health returns 200)
+    @app.get("/health")
+    async def root_health() -> dict[str, str]:
+        return {"status": "healthy"}
 
     # Add metrics endpoint
     if settings.metrics_enabled:

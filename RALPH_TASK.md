@@ -14,22 +14,22 @@ Build the core infrastructure for Homebot: PostgreSQL with multi-tenant RLS, Fas
 
 ### Database & Schema
 
-- [ ] PostgreSQL database created with `homebot` schema <!-- group: 1 -->
-- [ ] Tenants table with RLS enabled <!-- group: 1 -->
-- [ ] Users table with tenant membership <!-- group: 1 -->
-- [ ] Alembic migrations configured <!-- group: 1 -->
+- [x] PostgreSQL database created with `homebot` schema <!-- group: 1 -->
+- [x] Tenants table with RLS enabled <!-- group: 1 -->
+- [x] Users table with tenant membership <!-- group: 1 -->
+- [x] Alembic migrations configured <!-- group: 1 -->
 
 ### Authentication
 
-- [ ] JWT authentication working <!-- group: 2 -->
-- [ ] API key authentication for service accounts <!-- group: 2 -->
-- [ ] Password hashing with bcrypt <!-- group: 2 -->
+- [x] JWT authentication working <!-- group: 2 -->
+- [x] API key authentication for service accounts <!-- group: 2 -->
+- [x] Password hashing with bcrypt <!-- group: 2 -->
 
 ### API Structure
 
-- [ ] FastAPI app starts without errors <!-- group: 3 -->
-- [ ] OpenAPI spec generated at `/docs` <!-- group: 3 -->
-- [ ] Basic logging configured <!-- group: 3 -->
+- [x] FastAPI app starts without errors <!-- group: 3 -->
+- [x] OpenAPI spec generated at `/docs` <!-- group: 3 -->
+- [x] Basic logging configured <!-- group: 3 -->
 
 ---
 

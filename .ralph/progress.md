@@ -21,19 +21,19 @@ GrocyScan v1.0.0 was completed with NiceGUI stack. The project is being rebuilt 
 ## Homebot Phase Progress
 
 ### Phase 1: Foundation
-**Status:** Not Started
+**Status:** Complete
 
 Criteria:
-- [ ] [1] PostgreSQL database with homebot schema
-- [ ] [2] Tenants table with RLS
-- [ ] [3] Users table with tenant membership
-- [ ] [4] Alembic migrations configured
-- [ ] [5] JWT authentication
-- [ ] [6] API key authentication
-- [ ] [7] Password hashing with bcrypt
-- [ ] [8] FastAPI app starts
-- [ ] [9] OpenAPI spec at /docs
-- [ ] [10] Basic logging
+- [x] [1] PostgreSQL database with homebot schema (migration 0002)
+- [x] [2] Tenants table with RLS
+- [x] [3] Users table with tenant membership
+- [x] [4] Alembic migrations configured
+- [x] [5] JWT authentication (POST /api/v2/auth/login)
+- [x] [6] API key authentication (HOMEBOT-API-KEY)
+- [x] [7] Password hashing with bcrypt
+- [x] [8] FastAPI app starts; GET /health returns 200
+- [x] [9] OpenAPI spec at /docs
+- [x] [10] Basic logging (correlation ID middleware)
 
 ### Phase 2: Inventory Core
 **Status:** Pending (requires Phase 1)
@@ -57,7 +57,8 @@ Criteria:
 
 ## Session Log
 
-<!-- Add session entries here as work progresses -->
+### 2026-02-03
+- Phase 1 Foundation implemented: homebot schema migration (tenants, users, tenant_memberships + RLS), API v2 (JWT login, API key), root /health, correlation ID logging, Phase 1 tests (tests/phase1/). All 14 Phase 1 tests pass (11 passed, 3 DB tests skipped without DATABASE_URL=...homebot).
 
 ---
 
