@@ -207,6 +207,7 @@ cython_debug/
 # Ralph activity logs (can be ignored if too noisy)
 .ralph/activity.log
 .ralph/errors.log
+.ralph/.iteration
 
 # Marimo
 marimo/_static/

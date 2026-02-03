@@ -229,6 +229,12 @@ Primary scanning interface - the main user workflow.
 | LOC-02  | Add Location button | `browser_snapshot`         | "Add Location" button present                          |
 | LOC-03  | Sync status card    | `browser_snapshot`         | Grocy Sync status displayed with "Connected" indicator |
 | LOC-04  | Sync Now button     | `browser_click` "Sync Now" | Sync action triggered                                  |
+| LOC-05  | Add Location dialog | `browser_click` "Add Location" | Dialog opens with Name, Description, Is freezer     |
+| LOC-06  | Create location     | Fill name (e.g. "Test Kitchen"), submit | New location appears in list, success notify   |
+| LOC-07  | Click location card | `browser_click` on a location card      | Detail popup opens with Name, Description, ID, Is freezer |
+| LOC-08  | Detail popup Close  | In detail popup, click Close            | Popup closes                                          |
+| LOC-09  | Edit location       | Open detail popup, click Edit, change name/description/freezer, Save | List and popup show updated values      |
+| LOC-10  | Delete location     | Open detail popup, click Delete, confirm | Location removed from list or error if in use     |
 
 
 ### 3.4 Jobs Page (`/jobs`)

@@ -11,6 +11,9 @@
 		},
 		{
 			"path": "../../../cursor-command"
+		},
+		{
+			"path": "../../../ralph-wiggum-cursor"
 		}
 	],
 	"settings": {}
