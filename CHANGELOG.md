@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3-alpha] - 2026-02-02
+
+### Added
+
+- **Logs Page** - Full log viewer with API and UI
+  - API reads from configured `LOG_FILE` (last 500 lines), strips ANSI escape codes, returns `log_file` path
+  - `POST /api/logs/clear` truncates log file (with auth)
+  - UI: fetch on load, Refresh / Copy / Clear (with confirmation), Level and Search filters
+  - Terminal-style dark panel with monospace font and scrollable content
+  - Level pill badges (DEBUG, INFO, WARNING, ERROR, CRITICAL) with timestamp-first layout; padded `[level]` brackets stripped from display
+  - Restart hint and log file path; note about "Request is not set" in logs
+
+### Fixed
+
+- **NiceGUI "Request is not set"** - Monkey-patch `prune_user_storage` to skip clients without request set (avoids RuntimeError at startup or during disconnect when using `storage_secret`)
+
 ## [0.3.2-alpha] - 2026-02-02
 
 ### Added

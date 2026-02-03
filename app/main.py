@@ -21,6 +21,49 @@ from app.services.queue import job_queue, register_workers
 from app.ui.app import configure_nicegui
 
 # Configure logging first
+
+
+def _patch_nicegui_prune_user_storage() -> None:
+    """Patch NiceGUI prune_user_storage to skip clients without request set.
+
+    NiceGUI's prune_user_storage runs on a timer and assumes every Client has
+    request set; at startup or during disconnect some clients do not, causing
+    RuntimeError: Request is not set. We replace the function with a version
+    that safely collects session IDs only from clients that have request set.
+    """
+    import asyncio
+    import time
+
+    from nicegui import nicegui as nicegui_module
+    from nicegui.client import Client
+
+    async def _patched_prune_user_storage(*, force: bool = False) -> None:
+        client_session_ids: set[str] = set()
+        for client in Client.instances.values():
+            try:
+                sid = client.request.session["id"]
+                client_session_ids.add(sid)
+            except (RuntimeError, KeyError, AttributeError, TypeError):
+                pass
+
+        storages_to_close: list = []
+        now = time.time()
+        user_storages = nicegui_module.core.app.storage._users  # noqa: SLF001
+        for session_id in list(user_storages):
+            if session_id not in client_session_ids:
+                age = now - user_storages[session_id].last_modified
+                if force or age > 10.0:
+                    storages_to_close.append(user_storages.pop(session_id))
+        results = await asyncio.gather(
+            *[s.close() for s in storages_to_close],
+            return_exceptions=True,
+        )
+        for result in results:
+            if isinstance(result, Exception):
+                nicegui_module.log.exception(result)
+
+    nicegui_module.prune_user_storage = _patched_prune_user_storage
+
 configure_logging()
 logger = get_logger(__name__)
 
@@ -189,6 +232,10 @@ def create_app() -> FastAPI:
 
     # Integrate NiceGUI with FastAPI (storage_secret enables app.storage.user for e.g. recent scans)
     from nicegui import ui
+
+    # Work around NiceGUI prune_user_storage accessing client.request when not set (startup/disconnect)
+    _patch_nicegui_prune_user_storage()
+
     ui.run_with(
         app,
         title="GrocyScan",
