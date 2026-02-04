@@ -190,6 +190,12 @@ export async function testGrocyConnection() {
   return res.json()
 }
 
+export async function testLookupProvider(provider) {
+  const res = await apiFetch(`/api/settings/lookup/test/${provider}`, { method: 'POST' })
+  if (!res.ok) throw apiErrorFromResponse(res, await res.text())
+  return res.json()
+}
+
 // Jobs (session only)
 export async function getJobs(status = null, limit = 100) {
   let url = `/api/jobs?limit=${limit}`
