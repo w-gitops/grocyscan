@@ -40,17 +40,6 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
-      - name: Deploy preview to Vercel
-        if: ${{ secrets.VERCEL_TOKEN != '' && secrets.VERCEL_ORG_ID != '' && secrets.VERCEL_PROJECT_ID != '' }}
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: |
-          npx vercel pull --yes --environment=preview --token "$VERCEL_TOKEN"
-          DEPLOY_URL=$(npx vercel deploy --token "$VERCEL_TOKEN" --yes | awk 'END{print $0}')
-          echo "PLAYWRIGHT_BASE_URL=$DEPLOY_URL" >> "$GITHUB_ENV"
-
       - name: Run Playwright tests
         run: npm run test:e2e
 
