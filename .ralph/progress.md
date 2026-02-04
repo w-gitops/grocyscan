@@ -65,12 +65,13 @@ Criteria:
 - **frontend/** : Vue 3 + Quasar v2 + Vite, port 3335, proxy to API 3334. Pinia stores (auth, device), Vue Router with auth guard, Login/Scan/Products/Locations/Settings pages. Device fingerprint in services/device.js. Build: `npm run build`; dev: `npm run dev`.
 
 ### Phase 3.5: Inventory Parity
-**Status:** In Progress (14/17 criteria complete)
+**Status:** Complete (16/17 criteria; [11] Freezer auto-adjust deferred)
 
 - Migration 0011: quantity_units, product_groups, quantity_unit_conversions, enhanced product fields (QU FKs, best-before settings, advanced fields), stock entry enhancements (decimal qty, stock_id, price, open, note), transaction log enhancements (user_id, product_id, correlation_id, undone).
-- Stock API: inventory correction, open product, edit stock entry, undo operation with correlation_id support.
-- Location UI: Full CRUD with hierarchy display, edit/delete dialogs, reorder via sort_order.
-- Remaining: [11] Freezer auto-adjust, [15-17] Stock entry UI components.
+- Stock API: inventory correction, open product, edit stock entry, undo operation with correlation_id support, transfer with correlation_id.
+- Location UI: Full CRUD with hierarchy display (3-level), edit/delete dialogs, reorder via sort_order.
+- Stock Entry UI: ProductsPage enhanced with stock entry list (expiry indicators, open status), move dialog, inventory correction dialog, mark-as-opened button.
+- **Deferred:** [11] Freezer auto-adjust best-before dates on transfer (requires location freezer check in transfer logic).
 
 ### Phase 4: Labels & QR
 **Status:** Pending (requires Phase 3.5)
