@@ -5,20 +5,43 @@ const useRemoteBaseUrl = Boolean(process.env.PLAYWRIGHT_BASE_URL)
 
 export default defineConfig({
   testDir: './tests',
+  
+  // Match all .spec.js files (including in subdirectories like specs/)
+  testMatch: '**/*.spec.js',
+  
+  // Timeouts
   timeout: 30_000,
   expect: {
     timeout: 5_000,
   },
-  retries: process.env.CI ? 1 : 0,
+  
+  // Retries - more in CI for stability
+  retries: process.env.CI ? 2 : 0,
+  
+  // Parallel execution
+  workers: process.env.CI ? 2 : undefined,
+  fullyParallel: true,
+  
+  // Reporters
   reporter: process.env.CI
-    ? [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]]
-    : 'html',
+    ? [
+        ['list'],
+        ['html', { outputFolder: 'playwright-report', open: 'never' }],
+        ['json', { outputFile: 'test-results/results.json' }],
+      ]
+    : [['html', { open: 'on-failure' }]],
+  
+  // Output directory
+  outputDir: 'test-results',
+  
   use: {
     baseURL,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
     video: 'retain-on-failure',
+    actionTimeout: 10_000,
   },
+  
   projects: [
     {
       name: 'chromium',
@@ -26,7 +49,16 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
       },
     },
+    // Mobile project for responsive tests
+    {
+      name: 'mobile',
+      use: {
+        ...devices['Pixel 5'],
+      },
+      testMatch: '**/responsive.spec.js',
+    },
   ],
+  
   webServer: useRemoteBaseUrl
     ? undefined
     : {

@@ -132,12 +132,28 @@ jobs:
         if: github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true'
         run: npm ci
 
-      - name: Install Playwright browsers
+      - name: Cache Playwright browsers
         if: github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true'
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright browsers
+        if: (github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true') && steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps
+
+      - name: Install Playwright deps only (cache hit)
+        if: (github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true') && steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps
 
       - name: Run Playwright tests
         if: github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true'
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3334
         run: |
           set -o pipefail
           npm run test:e2e 2>&1 | tee e2e-run.log
@@ -148,6 +164,14 @@ jobs:
         with:
           name: playwright-report
           path: frontend/playwright-report/
+
+      - name: Upload test results
+        if: always() && (github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true')
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: frontend/test-results/
+          if-no-files-found: ignore
 
       - name: Upload E2E run log
         if: always() && (github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true')
