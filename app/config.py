@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     )
 
     # Application Core
+    app_title: str = Field(
+        default="HomeBot",
+        description="Product/app title shown in UI, docs, PWA manifest (set APP_TITLE to override)",
+    )
     grocyscan_version: str = _get_version()
     grocyscan_env: Literal["development", "staging", "production"] = "development"
     grocyscan_debug: bool = False
@@ -78,7 +82,17 @@ class Settings(BaseSettings):
     lookup_timeout_seconds: int = 10
 
     openfoodfacts_enabled: bool = True
-    openfoodfacts_user_agent: str = "GrocyScan/1.0"
+    openfoodfacts_user_agent: str = Field(
+        default="",
+        description="User-Agent for OpenFoodFacts; default is derived from app_title",
+    )
+
+    @property
+    def openfoodfacts_user_agent_resolved(self) -> str:
+        """Resolved User-Agent (app_title/version when openfoodfacts_user_agent not set)."""
+        if self.openfoodfacts_user_agent:
+            return self.openfoodfacts_user_agent
+        return f"{self.app_title}/1.0"
 
     goupc_enabled: bool = False
     goupc_api_key: SecretStr = SecretStr("")

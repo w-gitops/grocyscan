@@ -1,5 +1,6 @@
 """GrocyScan FastAPI application entry point."""
 
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
@@ -7,6 +8,21 @@ from typing import AsyncGenerator
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.exceptions import HTTPException
+from starlette.staticfiles import StaticFiles
+
+
+class SpaStaticFiles(StaticFiles):
+    """StaticFiles that serves index.html for missing paths (SPA client-side routing)."""
+
+    async def get_response(self, path: str, scope: dict):
+        """Serve index.html when path is not a file (so /scan, /login etc. work on hard refresh)."""
+        try:
+            return await super().get_response(path, scope)
+        except HTTPException as exc:
+            if exc.status_code == 404 and path.strip("/") and path != "index.html":
+                return await super().get_response("index.html", scope)
+            raise
 
 from app.api.middleware.correlation_id import CorrelationIdMiddleware
 from app.api.middleware.rate_limit import RateLimitMiddleware
@@ -20,51 +36,6 @@ from app.core.telemetry import configure_telemetry, instrument_fastapi
 from app.db.database import close_db, init_db
 from app.services.cache import cache_service
 from app.services.queue import job_queue, register_workers
-from app.ui.app import configure_nicegui
-
-# Configure logging first
-
-
-def _patch_nicegui_prune_user_storage() -> None:
-    """Patch NiceGUI prune_user_storage to skip clients without request set.
-
-    NiceGUI's prune_user_storage runs on a timer and assumes every Client has
-    request set; at startup or during disconnect some clients do not, causing
-    RuntimeError: Request is not set. We replace the function with a version
-    that safely collects session IDs only from clients that have request set.
-    """
-    import asyncio
-    import time
-
-    from nicegui import nicegui as nicegui_module
-    from nicegui.client import Client
-
-    async def _patched_prune_user_storage(*, force: bool = False) -> None:
-        client_session_ids: set[str] = set()
-        for client in Client.instances.values():
-            try:
-                sid = client.request.session["id"]
-                client_session_ids.add(sid)
-            except (RuntimeError, KeyError, AttributeError, TypeError):
-                pass
-
-        storages_to_close: list = []
-        now = time.time()
-        user_storages = nicegui_module.core.app.storage._users  # noqa: SLF001
-        for session_id in list(user_storages):
-            if session_id not in client_session_ids:
-                age = now - user_storages[session_id].last_modified
-                if force or age > 10.0:
-                    storages_to_close.append(user_storages.pop(session_id))
-        results = await asyncio.gather(
-            *[s.close() for s in storages_to_close],
-            return_exceptions=True,
-        )
-        for result in results:
-            if isinstance(result, Exception):
-                nicegui_module.log.exception(result)
-
-    nicegui_module.prune_user_storage = _patched_prune_user_storage
 
 configure_logging()
 logger = get_logger(__name__)
@@ -84,7 +55,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     # Startup
     logger.info(
-        "Starting GrocyScan",
+        "Starting %s",
+        settings.app_title,
         version=settings.grocyscan_version,
         environment=settings.grocyscan_env,
     )
@@ -113,7 +85,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await cache_service.disconnect()
 
     # Shutdown
-    logger.info("Shutting down GrocyScan")
+    logger.info("Shutting down %s", settings.app_title)
     await close_db()
 
 
@@ -124,7 +96,7 @@ def create_app() -> FastAPI:
         FastAPI: Configured application instance
     """
     app = FastAPI(
-        title="GrocyScan",
+        title=settings.app_title,
         description="Barcode scanning app for Grocy inventory management",
         version=settings.grocyscan_version,
         docs_url="/docs" if settings.docs_enabled else None,
@@ -166,10 +138,15 @@ def create_app() -> FastAPI:
     _pwa_dir = Path(__file__).parent / "static" / "pwa"
 
     @app.get("/manifest.json", include_in_schema=False)
-    async def pwa_manifest() -> FileResponse:
-        return FileResponse(
-            _pwa_dir / "manifest.json",
+    async def pwa_manifest() -> JSONResponse:
+        manifest_path = _pwa_dir / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["name"] = settings.app_title
+        manifest["short_name"] = settings.app_title
+        return JSONResponse(
+            manifest,
             media_type="application/manifest+json",
+            headers={"Cache-Control": "public, max-age=300"},
         )
 
     @app.get("/sw.js", include_in_schema=False)
@@ -178,6 +155,15 @@ def create_app() -> FastAPI:
             _pwa_dir / "sw.js",
             media_type="application/javascript",
             headers={"Service-Worker-Allowed": "/"},
+        )
+
+    # Vue frontend at / when frontend/dist exists (NiceGUI disabled)
+    _frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
+    if _frontend_dist.exists():
+        app.mount(
+            "/",
+            SpaStaticFiles(directory=_frontend_dist, html=True),
+            name="vue-app",
         )
 
     # Add metrics endpoint
@@ -253,22 +239,6 @@ def create_app() -> FastAPI:
 
     # Instrument with OpenTelemetry
     instrument_fastapi(app)
-
-    # Configure NiceGUI
-    configure_nicegui()
-
-    # Integrate NiceGUI with FastAPI (storage_secret enables app.storage.user for e.g. recent scans)
-    from nicegui import ui
-
-    # Work around NiceGUI prune_user_storage accessing client.request when not set (startup/disconnect)
-    _patch_nicegui_prune_user_storage()
-
-    ui.run_with(
-        app,
-        title="GrocyScan",
-        favicon="🛒",
-        storage_secret=settings.grocyscan_secret_key.get_secret_value(),
-    )
 
     return app
 

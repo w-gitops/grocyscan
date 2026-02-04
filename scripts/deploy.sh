@@ -11,6 +11,12 @@ REMOTE_PATH="/opt/grocyscan"
 
 echo -e "\033[36mDeploying GrocyScan to $REMOTE_HOST...\033[0m"
 
+# Build Vue frontend (for /app on server)
+if [ -f frontend/package.json ]; then
+  echo -e "\033[33mBuilding Vue frontend...\033[0m"
+  (cd frontend && NODE_ENV=production npm run build) || { echo "Frontend build failed"; exit 1; }
+fi
+
 # Sync with rsync (faster for incremental changes)
 echo -e "\033[33mSyncing code...\033[0m"
 rsync -avz --delete \
@@ -24,7 +30,14 @@ rsync -avz --delete \
     --exclude '.ralph' \
     --exclude 'prd' \
     --exclude 'docker' \
+    --exclude 'frontend/node_modules' \
     ./ "${REMOTE_HOST}:${REMOTE_PATH}/"
+# Sync built frontend dist (so server has frontend/dist for /app)
+if [ -d frontend/dist ]; then
+  echo -e "\033[33mSyncing frontend dist...\033[0m"
+  ssh $REMOTE_HOST "mkdir -p ${REMOTE_PATH}/frontend"
+  rsync -avz frontend/dist/ "${REMOTE_HOST}:${REMOTE_PATH}/frontend/dist/"
+fi
 
 # Install any new dependencies
 echo -e "\033[33mChecking dependencies...\033[0m"

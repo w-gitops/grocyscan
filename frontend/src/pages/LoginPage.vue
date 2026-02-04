@@ -2,7 +2,7 @@
   <div class="row justify-center items-center min-h-screen">
     <q-card class="col-12 col-sm-6 col-md-4 q-pa-lg">
       <q-card-section>
-        <div class="text-h4 text-center q-mb-md">GrocyScan</div>
+        <div class="text-h4 text-center q-mb-md">{{ configStore.appTitle }}</div>
         <div class="text-caption text-center text-grey q-mb-lg">Sign in to continue</div>
       </q-card-section>
       <q-card-section>
@@ -36,11 +36,13 @@
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useConfigStore } from '../stores/config'
 import { login } from '../services/api'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const configStore = useConfigStore()
 
 const username = ref('')
 const password = ref('')

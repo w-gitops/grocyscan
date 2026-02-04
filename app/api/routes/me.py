@@ -24,9 +24,16 @@ from app.db.homebot_models import (
     HomebotStockTransaction,
 )
 from app.schemas.v2.device import DeviceCreate, DeviceResponse, DeviceUpdatePreferences
+from app.schemas.v2.location import LocationResponse
 from app.schemas.v2.product import ProductResponse, ProductUpdate
 
 router = APIRouter()
+
+
+def _set_tenant_id_stmt(tenant_id: uuid.UUID):  # noqa: ANN201
+    """Return SET LOCAL statement; value must be literal (PostgreSQL does not allow params)."""
+    tid = str(tenant_id).replace("'", "''")
+    return text(f"SET LOCAL app.tenant_id = '{tid}'")
 
 
 class MeStockAddBody(BaseModel):
@@ -45,11 +52,49 @@ class MeStockConsumeBody(BaseModel):
     location_id: UUID | None = None
 
 
+# Fixed UUID for default tenant (matches migration 0007); used to seed when missing.
+_DEFAULT_TENANT_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+
+
+async def _ensure_default_tenant(db: AsyncSession) -> uuid.UUID | None:
+    """Insert default tenant if none exists (idempotent); return its id or None on failure."""
+    try:
+        await db.execute(
+            text("""
+                INSERT INTO homebot.tenants (id, name, slug, settings, created_at, updated_at)
+                VALUES (
+                    :tid::uuid,
+                    'Default',
+                    'default',
+                    NULL,
+                    now(),
+                    now()
+                )
+                ON CONFLICT (id) DO NOTHING
+            """),
+            {"tid": str(_DEFAULT_TENANT_ID)},
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        return None
+    return _DEFAULT_TENANT_ID
+
+
 async def _get_default_tenant_id(db: AsyncSession) -> uuid.UUID | None:
     """Get first tenant id (homebot.tenants has SELECT policy with true)."""
     result = await db.execute(text("SELECT id FROM homebot.tenants LIMIT 1"))
     row = result.scalar_one_or_none()
-    return row[0] if row else None
+    # scalar_one_or_none() returns the single column value (UUID) with asyncpg, not a Row
+    if row is not None:
+        return row[0] if hasattr(row, "__getitem__") else row
+    # No tenant: try to seed default tenant so device registration works without running 0007.
+    await _ensure_default_tenant(db)
+    result = await db.execute(text("SELECT id FROM homebot.tenants LIMIT 1"))
+    row = result.scalar_one_or_none()
+    if row is None:
+        return None
+    return row[0] if hasattr(row, "__getitem__") else row
 
 
 async def _set_tenant_and_get_device_session(
@@ -107,7 +152,7 @@ async def register_device_me(
         tenant_id = await _get_default_tenant_id(session)
         if not tenant_id:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="No tenant configured")
-        await session.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": str(tenant_id)})
+        await session.execute(_set_tenant_id_stmt(tenant_id))
         result = await session.execute(
             select(HomebotDevice).where(
                 HomebotDevice.tenant_id == tenant_id,
@@ -149,7 +194,7 @@ async def get_device_me(
         tenant_id = await _get_default_tenant_id(session)
         if not tenant_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not registered")
-        await session.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": str(tenant_id)})
+        await session.execute(_set_tenant_id_stmt(tenant_id))
         result = await session.execute(
             select(HomebotDevice).where(HomebotDevice.fingerprint == fingerprint)
         )
@@ -173,7 +218,7 @@ async def update_device_me(
         tenant_id = await _get_default_tenant_id(session)
         if not tenant_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not registered")
-        await session.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": str(tenant_id)})
+        await session.execute(_set_tenant_id_stmt(tenant_id))
         result = await session.execute(
             select(HomebotDevice).where(HomebotDevice.fingerprint == fingerprint)
         )
@@ -196,7 +241,7 @@ async def _session_device_context(request: Request, x_device_id: str | None):
         tenant_id = await _get_default_tenant_id(session)
         if not tenant_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No tenant configured")
-        await session.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": str(tenant_id)})
+        await session.execute(_set_tenant_id_stmt(tenant_id))
         result = await session.execute(
             select(HomebotDevice).where(HomebotDevice.fingerprint == fingerprint)
         )
@@ -247,7 +292,7 @@ async def list_products_me(
 ) -> list[ProductResponse]:
     """List homebot products for device tenant (session auth). Optional ?q= search."""
     async for session, tenant_id, _ in _session_device_context(request, x_device_id):
-        await session.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": str(tenant_id)})
+        await session.execute(_set_tenant_id_stmt(tenant_id))
         stmt = select(HomebotProduct).where(HomebotProduct.deleted_at.is_(None))
         if q and q.strip():
             pattern = f"%{q.strip().lower()}%"
@@ -271,7 +316,7 @@ async def get_product_detail_me(
 ) -> dict:
     """Product detail with stock per location (session auth)."""
     async for session, tenant_id, _ in _session_device_context(request, x_device_id):
-        await session.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": str(tenant_id)})
+        await session.execute(_set_tenant_id_stmt(tenant_id))
         r = await session.execute(
             select(HomebotProduct).where(
                 HomebotProduct.id == product_id,
@@ -320,7 +365,7 @@ async def update_product_me(
 ) -> ProductResponse:
     """Update product (partial, session auth)."""
     async for session, tenant_id, _ in _session_device_context(request, x_device_id):
-        await session.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": str(tenant_id)})
+        await session.execute(_set_tenant_id_stmt(tenant_id))
         r = await session.execute(
             select(HomebotProduct).where(
                 HomebotProduct.id == product_id,
@@ -338,6 +383,22 @@ async def update_product_me(
         await session.commit()
         await session.refresh(product)
         return ProductResponse.model_validate(product)
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
+
+
+@router.get("/locations", response_model=list[LocationResponse])
+async def list_locations_me(
+    request: Request,
+    x_device_id: str | None = Header(None, alias="X-Device-ID"),
+) -> list[LocationResponse]:
+    """List homebot locations for device tenant (session auth)."""
+    async for session, tenant_id, _ in _session_device_context(request, x_device_id):
+        await session.execute(_set_tenant_id_stmt(tenant_id))
+        result = await session.execute(
+            select(HomebotLocation).where(HomebotLocation.tenant_id == tenant_id).order_by(HomebotLocation.sort_order, HomebotLocation.name)
+        )
+        locations = result.scalars().unique().all()
+        return [LocationResponse.model_validate(loc) for loc in locations]
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
 
 

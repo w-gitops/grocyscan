@@ -8,6 +8,20 @@ $REMOTE_PATH = "/opt/grocyscan"
 
 Write-Host "Deploying GrocyScan to $REMOTE_HOST..." -ForegroundColor Cyan
 
+# Build Vue frontend (for /app on server)
+if (Test-Path "frontend\package.json") {
+    Write-Host "Building Vue frontend..." -ForegroundColor Yellow
+    Push-Location frontend
+    $env:NODE_ENV = "production"
+    npm run build 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Frontend build failed. Run: cd frontend; npm run build" -ForegroundColor Red
+        Pop-Location
+        exit 1
+    }
+    Pop-Location
+}
+
 # Sync app code (excluding venv, __pycache__, etc.)
 Write-Host "Syncing code..." -ForegroundColor Yellow
 scp -r app/* "${REMOTE_HOST}:${REMOTE_PATH}/app/"
@@ -21,6 +35,13 @@ scp alembic.ini "${REMOTE_HOST}:${REMOTE_PATH}/"
 
 # Sync requirements if changed
 scp requirements.txt "${REMOTE_HOST}:${REMOTE_PATH}/"
+
+# Sync Vue frontend build (served at /app)
+if (Test-Path "frontend\dist") {
+    Write-Host "Syncing frontend dist..." -ForegroundColor Yellow
+    ssh $REMOTE_HOST "mkdir -p ${REMOTE_PATH}/frontend"
+    scp -r frontend\dist "${REMOTE_HOST}:${REMOTE_PATH}/frontend/"
+}
 
 # Install/update Python dependencies in venv (ensures new deps like python-jose are present)
 Write-Host "Installing dependencies on server..." -ForegroundColor Yellow

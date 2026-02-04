@@ -44,7 +44,7 @@ class OpenFoodFactsProvider(BaseLookupProvider):
     def user_agent(self) -> str:
         """Get user agent string."""
         from app.config import settings
-        return settings.openfoodfacts_user_agent
+        return settings.openfoodfacts_user_agent_resolved
 
     @property
     def timeout(self) -> int:

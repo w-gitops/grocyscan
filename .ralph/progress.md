@@ -84,3 +84,7 @@ Criteria:
 
 ### 2026-02-03 12:59:53
 **Session 1 started** (model: opus-4.5-thinking)
+
+### 2026-02-03 (browser E2E)
+- Full browser E2E: deploy, login (admin/admin), device registration, scan lookup, SPA /scan, Products page.
+- **Fix:** Device registration failed with `NoReferencedTableError: ... 'homebot.tenants'`. Added minimal `HomebotTenant` ORM model in `app/db/homebot_models.py` so SQLAlchemy can resolve FKs from devices/products/etc. Deployed; registration and scan flow verified.

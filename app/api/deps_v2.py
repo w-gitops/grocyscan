@@ -85,7 +85,8 @@ async def get_db_homebot(
     db: AsyncSession = Depends(get_db),
 ) -> AsyncGenerator[AsyncSession, None]:
     """Database session with app.tenant_id set for RLS."""
-    await db.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": str(tenant_id)})
+    # PostgreSQL SET LOCAL requires literal value, not bound param
+    await db.execute(text(f"SET LOCAL app.tenant_id = '{str(tenant_id).replace(chr(39), chr(39)+chr(39))}'"))
     yield db
 
 
