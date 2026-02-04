@@ -7,9 +7,9 @@ from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routes.v2.auth import decode_jwt
 from app.config import settings
 from app.db.database import get_db
+from app.services.auth import decode_jwt
 
 
 def _valid_api_keys() -> set[str]:

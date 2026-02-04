@@ -1,12 +1,19 @@
 """Authentication endpoints."""
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.core.exceptions import AuthenticationError
-from app.services.auth import authenticate_user, logout_user
+from app.services.auth import (
+    authenticate_user,
+    get_auth_password_hash,
+    hash_password,
+    logout_user,
+    set_auth_password_hash,
+    verify_password,
+)
 
 router = APIRouter()
 
@@ -33,15 +40,41 @@ class LogoutResponse(BaseModel):
     message: str
 
 
+class PasswordChangeRequest(BaseModel):
+    """Password change request."""
+
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+    confirm_password: str | None = Field(None, min_length=8)
+
+
+class PasswordChangeResponse(BaseModel):
+    """Password change response."""
+
+    success: bool
+    message: str
+
+
 def _set_session_cookie(response: Response, session_id: str) -> None:
-    """Set session_id cookie on response."""
+    """Set session cookie on response."""
     response.set_cookie(
-        key="session_id",
+        key=settings.session_cookie_name,
         value=session_id,
-        httponly=True,
-        secure=settings.is_production,
-        samesite="strict",
+        httponly=settings.session_cookie_httponly,
+        secure=settings.session_cookie_secure_resolved,
+        samesite=settings.session_cookie_samesite,
         max_age=settings.session_absolute_timeout_days * 24 * 60 * 60,
+        domain=settings.session_cookie_domain_resolved,
+        path="/",
+    )
+
+
+def _clear_session_cookie(response: Response) -> None:
+    """Clear session cookie on response."""
+    response.delete_cookie(
+        settings.session_cookie_name,
+        domain=settings.session_cookie_domain_resolved,
+        path="/",
     )
 
 
@@ -92,18 +125,54 @@ async def logout(request: Request, response: Response) -> LogoutResponse:
     Returns:
         LogoutResponse: Logout confirmation
     """
-    session_id = request.cookies.get("session_id")
+    session_id = request.cookies.get(settings.session_cookie_name)
 
     if session_id:
         logout_user(session_id)
 
     # Clear session cookie
-    response.delete_cookie("session_id")
+    _clear_session_cookie(response)
 
     return LogoutResponse(
         success=True,
         message="Logged out successfully",
     )
+
+
+@router.post("/password", response_model=PasswordChangeResponse)
+async def change_password(request: Request, body: PasswordChangeRequest) -> PasswordChangeResponse:
+    """Change the current user's password (session auth)."""
+    if not settings.auth_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Authentication is disabled",
+        )
+    if not getattr(request.state, "user_id", None):
+        raise AuthenticationError("Not authenticated")
+    stored_hash = get_auth_password_hash()
+    if not stored_hash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Authentication not configured",
+        )
+    if not verify_password(body.current_password, stored_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+    if body.confirm_password is not None and body.new_password != body.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password confirmation does not match",
+        )
+    if verify_password(body.new_password, stored_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different",
+        )
+    new_hash = hash_password(body.new_password)
+    set_auth_password_hash(new_hash)
+    return PasswordChangeResponse(success=True, message="Password updated")
 
 
 @router.get("/me")

@@ -161,7 +161,13 @@ async def reset_settings() -> SettingsResponse:
 
 def _mask_sensitive(data: dict[str, Any]) -> None:
     """Mask sensitive values in settings data."""
-    sensitive_keys = {"api_key", "goupc_api_key", "upcitemdb_api_key", "brave_api_key"}
+    sensitive_keys = {
+        "api_key",
+        "goupc_api_key",
+        "upcitemdb_api_key",
+        "brave_api_key",
+        "password_hash",
+    }
     
     for section in data.values():
         if isinstance(section, dict):
@@ -170,7 +176,13 @@ def _mask_sensitive(data: dict[str, Any]) -> None:
 
 def _mask_sensitive_flat(data: dict[str, Any]) -> None:
     """Mask sensitive values in a flat dict."""
-    sensitive_keys = {"api_key", "goupc_api_key", "upcitemdb_api_key", "brave_api_key"}
+    sensitive_keys = {
+        "api_key",
+        "goupc_api_key",
+        "upcitemdb_api_key",
+        "brave_api_key",
+        "password_hash",
+    }
     
     for key in sensitive_keys:
         if key in data and data[key]:

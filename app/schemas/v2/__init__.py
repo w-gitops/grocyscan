@@ -2,6 +2,7 @@
 
 from app.schemas.v2.device import DeviceCreate, DeviceResponse, DeviceUpdatePreferences
 from app.schemas.v2.location import LocationCreate, LocationResponse, LocationUpdate
+from app.schemas.v2.people import PersonCreate, PersonResponse, PersonUpdate
 from app.schemas.v2.product import ProductCreate, ProductResponse, ProductUpdate
 from app.schemas.v2.stock import StockAddRequest, StockConsumeRequest, StockResponse, StockTransferRequest
 
@@ -12,6 +13,9 @@ __all__ = [
     "LocationCreate",
     "LocationResponse",
     "LocationUpdate",
+    "PersonCreate",
+    "PersonResponse",
+    "PersonUpdate",
     "ProductCreate",
     "ProductResponse",
     "ProductUpdate",
