@@ -10,21 +10,27 @@ import { getMe } from './services/api'
 import { useAuthStore } from './stores/auth'
 import { useConfigStore } from './stores/config'
 
-const app = createApp(App)
-const pinia = createPinia()
-app.use(pinia)
-app.use(router)
-app.use(Quasar, { plugins: { Notify, Dialog } })
+async function bootstrap() {
+  const app = createApp(App)
+  const pinia = createPinia()
+  app.use(pinia)
+  app.use(Quasar, { plugins: { Notify, Dialog } })
 
-router.isReady().then(async () => {
-  const configStore = useConfigStore()
+  const configStore = useConfigStore(pinia)
   await configStore.load()
   document.title = configStore.appTitle
+
+  const authStore = useAuthStore(pinia)
   try {
     const me = await getMe()
-    if (me) useAuthStore().setUser(me.username || 'user')
+    if (me) authStore.setUser(me.username || 'user')
   } catch {
     // no session
   }
+
+  app.use(router)
+  await router.isReady()
   app.mount('#app')
-})
+}
+
+bootstrap()
