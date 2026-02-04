@@ -65,6 +65,21 @@ def reset_settings_cache() -> None:
         os.remove(settings_service.SETTINGS_FILE)
 
 
+@pytest.hookimpl(tryfirst=True)
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Fail CI runs if any tests were skipped."""
+    if os.environ.get("CI", "").lower() != "true":
+        return
+    if session.testsfailed:
+        return
+    skipped = len(getattr(session, "skipped", [])) if hasattr(session, "skipped") else None
+    if skipped is None:
+        # Pytest doesn't store skipped counts by default; use stats dict.
+        skipped = len(session.stats.get("skipped", [])) if hasattr(session, "stats") else 0
+    if skipped:
+        session.exitstatus = 1
+
+
 @pytest.fixture(scope="session")
 def test_settings() -> Settings:
     """Create test settings.
