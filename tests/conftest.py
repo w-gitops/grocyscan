@@ -8,7 +8,9 @@ import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
 from app.config import Settings
 from app.db.database import Base, get_db
@@ -29,6 +31,33 @@ def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
     loop.close()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def isolate_settings_file(tmp_path_factory) -> None:
+    """Use a temp settings file to avoid cross-test leakage."""
+    from app.services.settings import settings_service
+
+    settings_service.SETTINGS_FILE = str(
+        tmp_path_factory.mktemp("settings") / "settings.json"
+    )
+    settings_service._settings = None
+    settings_service._test_settings_file = settings_service.SETTINGS_FILE
+
+
+@pytest.fixture(autouse=True)
+def reset_settings_cache() -> None:
+    """Reset settings cache and file between tests."""
+    import os
+
+    from app.services.settings import settings_service
+
+    settings_service.SETTINGS_FILE = getattr(
+        settings_service, "_test_settings_file", settings_service.SETTINGS_FILE
+    )
+    settings_service._settings = None
+    if settings_service.SETTINGS_FILE and os.path.exists(settings_service.SETTINGS_FILE):
+        os.remove(settings_service.SETTINGS_FILE)
 
 
 @pytest.fixture(scope="session")
@@ -59,8 +88,17 @@ async def test_engine() -> AsyncGenerator[Any, None]:
     engine = create_async_engine(
         TEST_DATABASE_URL,
         echo=False,
-        execution_options={"schema_translate_map": {"homebot": None}},
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
     )
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _attach_homebot(dbapi_connection, _connection_record) -> None:
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("ATTACH DATABASE ':memory:' AS homebot")
+        finally:
+            cursor.close()
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
