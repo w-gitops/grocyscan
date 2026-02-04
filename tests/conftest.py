@@ -1,6 +1,5 @@
 """Pytest fixtures and configuration."""
 
-import asyncio
 import os
 from collections.abc import AsyncGenerator, Generator
 from typing import Any
@@ -19,24 +18,13 @@ if not TEST_DATABASE_URL:
 if "postgresql" not in TEST_DATABASE_URL:
     raise RuntimeError("DATABASE_URL must use PostgreSQL (postgresql+asyncpg).")
 
-# Ensure app settings pick up DATABASE_URL before import.
+# Ensure app settings pick up test env before import.
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+os.environ.setdefault("AUTH_ENABLED", "false")
 
 from app.config import Settings
 from app.db.database import Base, get_db
 from app.main import app
-
-
-@pytest.fixture(scope="session")
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
-    """Create an event loop for the test session.
-
-    Yields:
-        asyncio.AbstractEventLoop: Event loop instance
-    """
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest.fixture(scope="session")
