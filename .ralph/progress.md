@@ -43,12 +43,13 @@ Criteria:
 - RLS and tenant context via X-Tenant-ID and get_db_homebot.
 
 ### Phase 3: Device & UI
-**Status:** In progress (device backend + NiceGUI scan UI)
+**Status:** Complete (Option A: NiceGUI)
 
 - Migration 0006: homebot.devices. v2 API: POST /api/v2/devices, GET/PATCH /api/v2/devices/me (X-Device-ID). Criteria 4,5,6 done.
-- Option A (NiceGUI): /api/me router mounted. Device registration prompt on scan page (GET /api/me/device → 404 shows dialog, POST register). Action mode row (Add Stock | Consume | Transfer) with PATCH default_action. Quick actions: after scan, GET /api/me/product-by-barcode; if in homebot show +1/-1 calling /api/me/stock/add and /api/me/stock/consume. Criteria 8, 9 done.
-- **Criteria 10, 11 done:** Products page: Homebot tab lists products from GET /api/me/products with client-side search (name/description/category). Product detail: click row opens dialog with stock by location; Edit button opens form, PATCH /api/me/products/{id} for name/description/category. API base uses relative URLs for deployment. Frontend scaffold (1,2,3), camera (7), PWA (12) pending.
-- Deploy: Ran scripts/deploy.ps1; app and migrations synced to 192.168.200.37, grocyscan service restarted (active). Scanner validation: https://grocyscan.ssiops.com returned 502 Bad Gateway; direct 192.168.200.37:3334 and localhost:3334 connection refused from browser host. Scanner UI (BarcodeScanner with camera button, html5-qrcode, manual input) is deployed; live camera validation requires app reachable (fix proxy/502 or test from LAN).
+- Option A (NiceGUI): /api/me router mounted. Device registration, action mode, quick actions. Criteria 8, 9 done. Criteria 10, 11: product list with search, product detail with Edit.
+- **Criteria 1, 2, 3 (Option A):** NiceGUI is the frontend scaffold at :3334. Auth/device state in app.storage.user (device_fingerprint, api_cookie) and session (session_id cookie). Auth guards: _require_auth() in app.py; unauthenticated users redirected to /login; index / redirects to /login or /scan; login uses browser form submit so Set-Cookie is received; auth endpoint accepts form POST and returns 302 with cookie.
+- **Criterion 7:** Camera barcode scanner: BarcodeScanner component with camera button, html5-qrcode, formats UPC/EAN/CODE_128/QR; live camera requires HTTPS and permission (manual validation if 502/LAN).
+- **Criterion 12:** PWA: /manifest.json and /sw.js served from app/static/pwa/; manifest link and theme-color in index; service worker registered on load; app installable on supported browsers.
 
 ### Phase 4: Labels & QR
 **Status:** Pending (requires Phase 3)

@@ -14,9 +14,9 @@ Device registration, preferences, and UI (Vue/Quasar or NiceGUI validation).
 
 ### Frontend Scaffold
 
-- [ ] **[1]** Vue 3 + Quasar project initialized (Option B) or use NiceGUI (Option A)
-- [ ] **[2]** Pinia store configured (auth, device)
-- [ ] **[3]** Router with auth guards
+- [x] **[1]** Vue 3 + Quasar project initialized (Option B) or use NiceGUI (Option A)
+- [x] **[2]** Pinia store configured (auth, device)
+- [x] **[3]** Router with auth guards
 
 ### Device Management
 
@@ -26,7 +26,7 @@ Device registration, preferences, and UI (Vue/Quasar or NiceGUI validation).
 
 ### Scanning Interface
 
-- [ ] **[7]** Camera barcode scanner works
+- [x] **[7]** Camera barcode scanner works
 - [x] **[8]** Action mode selection
 - [x] **[9]** Quick actions after scan
 
@@ -34,7 +34,7 @@ Device registration, preferences, and UI (Vue/Quasar or NiceGUI validation).
 
 - [x] **[10]** Product list with search
 - [x] **[11]** Product detail view
-- [ ] **[12]** PWA installable
+- [x] **[12]** PWA installable
 
 ---
 

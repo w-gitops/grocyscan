@@ -1,11 +1,12 @@
 """GrocyScan FastAPI application entry point."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.api.middleware.correlation_id import CorrelationIdMiddleware
 from app.api.middleware.rate_limit import RateLimitMiddleware
@@ -160,6 +161,24 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def root_health() -> dict[str, str]:
         return {"status": "healthy"}
+
+    # PWA (Phase 3 [12]): manifest and service worker for installability
+    _pwa_dir = Path(__file__).parent / "static" / "pwa"
+
+    @app.get("/manifest.json", include_in_schema=False)
+    async def pwa_manifest() -> FileResponse:
+        return FileResponse(
+            _pwa_dir / "manifest.json",
+            media_type="application/manifest+json",
+        )
+
+    @app.get("/sw.js", include_in_schema=False)
+    async def pwa_service_worker() -> FileResponse:
+        return FileResponse(
+            _pwa_dir / "sw.js",
+            media_type="application/javascript",
+            headers={"Service-Worker-Allowed": "/"},
+        )
 
     # Add metrics endpoint
     if settings.metrics_enabled:

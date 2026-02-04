@@ -1,6 +1,7 @@
 """Authentication endpoints."""
 
 from fastapi import APIRouter, Request, Response
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from app.config import settings
@@ -32,32 +33,47 @@ class LogoutResponse(BaseModel):
     message: str
 
 
-@router.post("/login", response_model=LoginResponse)
-async def login(request: LoginRequest, response: Response) -> LoginResponse:
-    """Authenticate user and create session.
-
-    Args:
-        request: Login credentials
-        response: FastAPI response for setting cookies
-
-    Returns:
-        LoginResponse: Login result
-
-    Raises:
-        AuthenticationError: If credentials are invalid
-    """
-    session = authenticate_user(request.username, request.password)
-
-    # Set session cookie
+def _set_session_cookie(response: Response, session_id: str) -> None:
+    """Set session_id cookie on response."""
     response.set_cookie(
         key="session_id",
-        value=session.session_id,
+        value=session_id,
         httponly=True,
         secure=settings.is_production,
         samesite="strict",
         max_age=settings.session_absolute_timeout_days * 24 * 60 * 60,
     )
 
+
+@router.post("/login")
+async def login(request: Request, response: Response):
+    """Authenticate user and create session.
+
+    Accepts JSON (returns LoginResponse) or form (returns 302 redirect to /scan).
+    Form POST is used by the browser so Set-Cookie is received by the client.
+    """
+    is_form = (
+        "application/x-www-form-urlencoded" in request.headers.get("content-type", "")
+        or "multipart/form-data" in request.headers.get("content-type", "")
+    )
+    if is_form:
+        form = await request.form()
+        username = (form.get("username") or "").strip()
+        password = (form.get("password") or "")
+        if not username or not password:
+            return RedirectResponse(url="/login?error=missing", status_code=302)
+        try:
+            session = authenticate_user(username, password)
+        except AuthenticationError:
+            return RedirectResponse(url="/login?error=invalid", status_code=302)
+        redir = RedirectResponse(url="/scan", status_code=302)
+        _set_session_cookie(redir, session.session_id)
+        return redir
+    # JSON body
+    body = await request.json()
+    login_req = LoginRequest(**body)
+    session = authenticate_user(login_req.username, login_req.password)
+    _set_session_cookie(response, session.session_id)
     return LoginResponse(
         success=True,
         username=session.username,
