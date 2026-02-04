@@ -23,8 +23,9 @@ Each session starts fresh. Progress persists through:
 1. **Read RALPH_TASK.md** - Find unchecked `[ ]` criteria
 2. **Read .ralph/guardrails.md** - Follow ALL active guardrails
 3. **Read .ralph/progress.md** - See what's done, avoid repeating
-4. **Check git log** - Review recent commits for context
-5. **Check browser availability** - If `browser_validation: true` in frontmatter
+4. **Check branch** - If on `main`, create and switch to a feature branch before any work. If on a feature branch, continue on it.
+5. **Check git log** - Review recent commits for context
+6. **Check browser availability** - If `browser_validation: true` in frontmatter
 
 ## Work Loop
 
@@ -110,10 +111,35 @@ Call tools via `CallMcpTool` with `server: "cursor-browser-extension"`.
 
 ## Git Protocol
 
+### Branch workflow (start of work)
+
+- **Before starting work**, check current branch (`git branch --show-current`).
+- **If on `main`**: Create and switch to a feature branch. Do not commit to main.
+  - Use a descriptive name, e.g. `ralph/80.10-homebot` or `feature/short-task-name`.
+  - Example: `git checkout -b ralph/80.10-homebot`
+- **If already on a feature branch**: Continue on that branch; do not switch back to main to make changes.
+
+### Commits and push
+
 - Commit after EACH completed criterion
 - Prefix: `ralph: [N] ` where N is criterion number
 - Example: `ralph: [3] Implement user authentication`
 - Push after every 3-5 commits
+
+### Sync and merge before push (multi-agent safety)
+
+When pushing, avoid conflict headaches from multiple agents merging to main asynchronously:
+
+1. **Full sync**: Before every push, fetch and update from remote:
+   - `git fetch origin`
+   - `git pull --rebase origin <current-branch>` (or `git pull origin <current-branch>` if you prefer merge)
+2. **Update from main**: Check if `origin/main` has new commits your branch doesn’t have:
+   - `git fetch origin main`
+   - If `origin/main` is ahead (e.g. `git rev-list --count HEAD..origin/main` > 0), merge main into your branch:
+   - `git merge origin/main` (resolve any conflicts, then commit)
+3. **Then push**: `git push origin <current-branch>`
+
+This keeps your feature branch up to date with main so merges to main stay clean.
 
 ## Context Management
 
