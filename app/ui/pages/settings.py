@@ -4,7 +4,8 @@ import json
 from typing import Any
 
 import httpx
-from nicegui import ui
+from fastapi import Request
+from nicegui import app, ui
 
 from app.config import settings
 from app.core.logging import get_logger
@@ -41,12 +42,24 @@ LLM_PRESETS = {
 }
 
 API_BASE = f"http://localhost:{settings.grocyscan_port}/api"
+API_COOKIE_KEY = "api_cookie"
+
+
+def _auth_headers() -> dict[str, str]:
+    """Headers with session cookie for /api calls."""
+    cookie = app.storage.user.get(API_COOKIE_KEY) or ""
+    return {"Cookie": cookie} if cookie else {}
+
+
+def _save_api_cookie(request: Request) -> None:
+    """Store request cookie for later /api calls."""
+    app.storage.user[API_COOKIE_KEY] = request.headers.get("cookie", "")
 
 
 async def fetch_settings(section: str | None = None) -> dict[str, Any]:
     """Fetch settings from API."""
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(headers=_auth_headers()) as client:
             if section:
                 response = await client.get(f"{API_BASE}/settings/{section}", timeout=10)
             else:
@@ -63,7 +76,7 @@ async def fetch_settings(section: str | None = None) -> dict[str, Any]:
 async def save_settings(section: str, values: dict[str, Any]) -> tuple[bool, str]:
     """Save settings to API."""
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(headers=_auth_headers()) as client:
             response = await client.put(
                 f"{API_BASE}/settings/{section}",
                 json={"values": values},
@@ -80,8 +93,10 @@ async def save_settings(section: str, values: dict[str, Any]) -> tuple[bool, str
         return False, str(e)
 
 
-async def render() -> None:
+async def render(request: Request | None = None) -> None:
     """Render the settings page."""
+    if request:
+        _save_api_cookie(request)
     create_header()
 
     with ui.column().classes("w-full max-w-4xl mx-auto p-4"):
@@ -95,6 +110,8 @@ async def render() -> None:
             lookup_tab = ui.tab("Lookup")
             scanning_tab = ui.tab("Scanning")
             ui_tab = ui.tab("UI")
+            account_tab = ui.tab("Account")
+            database_tab = ui.tab("Database")
 
         with ui.tab_panels(tabs, value=grocy_tab).classes("w-full"):
             # ==================== GROCY SETTINGS ====================
@@ -116,6 +133,14 @@ async def render() -> None:
             # ==================== UI SETTINGS ====================
             with ui.tab_panel(ui_tab):
                 await render_ui_settings()
+
+            # ==================== ACCOUNT SETTINGS ====================
+            with ui.tab_panel(account_tab):
+                await render_account_settings()
+
+            # ==================== DATABASE MIGRATIONS ====================
+            with ui.tab_panel(database_tab):
+                await render_database_migrations()
 
     create_mobile_nav()
 
@@ -171,7 +196,7 @@ async def render_grocy_settings() -> None:
             status_label.classes(replace="text-sm mb-4 text-gray-500")
             
             try:
-                async with httpx.AsyncClient() as client:
+                async with httpx.AsyncClient(headers=_auth_headers()) as client:
                     # Use backend endpoint that has access to stored key
                     response = await client.post(
                         f"{API_BASE}/settings/grocy/test",
@@ -226,7 +251,7 @@ async def render_grocy_settings() -> None:
 async def fetch_llm_models() -> list[str]:
     """Fetch available models from the LLM provider."""
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(headers=_auth_headers()) as client:
             response = await client.get(f"{API_BASE}/settings/llm/models", timeout=15)
             if response.status_code == 200:
                 data = response.json()
@@ -376,7 +401,7 @@ async def render_llm_settings() -> None:
         async def test_llm():
             status_label.text = "Testing connection..."
             try:
-                async with httpx.AsyncClient() as client:
+                async with httpx.AsyncClient(headers=_auth_headers()) as client:
                     # Try to fetch models as a connection test
                     response = await client.get(f"{API_BASE}/settings/llm/models", timeout=15)
                     if response.status_code == 200:
@@ -462,7 +487,7 @@ async def render_lookup_settings() -> None:
             status_label.classes(replace="text-xs text-gray-500")
         
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(headers=_auth_headers()) as client:
                 response = await client.post(
                     f"{API_BASE}/settings/lookup/test/{provider}",
                     timeout=20,
@@ -760,3 +785,140 @@ async def render_ui_settings() -> None:
                 ui.notify(message, type="negative")
         
         ui.button("Save Theme Preference", on_click=save_ui).props("color=primary")
+
+
+async def render_account_settings() -> None:
+    """Render account security settings."""
+    with ui.card().classes("w-full"):
+        ui.label("Account Security").classes("font-semibold mb-4")
+        if not settings.auth_enabled:
+            ui.label("Authentication is disabled; no password is required.").classes(
+                "text-sm text-gray-500"
+            )
+            return
+
+        current_input = ui.input(
+            label="Current password",
+            password=True,
+            password_toggle_button=True,
+        ).classes("w-full mb-2")
+        new_input = ui.input(
+            label="New password",
+            password=True,
+            password_toggle_button=True,
+        ).classes("w-full mb-2")
+        confirm_input = ui.input(
+            label="Confirm new password",
+            password=True,
+            password_toggle_button=True,
+        ).classes("w-full mb-2")
+        ui.label("Minimum 8 characters.").classes("text-xs text-gray-500 mb-2")
+
+        status_label = ui.label("").classes("text-sm mb-4")
+
+        async def change_password() -> None:
+            if not current_input.value or not new_input.value:
+                status_label.text = "Please enter current and new password"
+                status_label.classes(replace="text-sm mb-4 text-red-500")
+                return
+            if new_input.value != confirm_input.value:
+                status_label.text = "New password confirmation does not match"
+                status_label.classes(replace="text-sm mb-4 text-red-500")
+                return
+            payload = {
+                "current_password": current_input.value,
+                "new_password": new_input.value,
+                "confirm_password": confirm_input.value,
+            }
+            try:
+                async with httpx.AsyncClient(headers=_auth_headers()) as client:
+                    response = await client.post(
+                        f"{API_BASE}/auth/password",
+                        json=payload,
+                        timeout=10,
+                    )
+                if response.status_code == 200:
+                    status_label.text = "Password updated"
+                    status_label.classes(replace="text-sm mb-4 text-green-500")
+                    ui.notify("Password updated", type="positive")
+                    current_input.value = ""
+                    new_input.value = ""
+                    confirm_input.value = ""
+                    return
+                try:
+                    data = response.json()
+                    message = data.get("detail") or data.get("message") or ""
+                except Exception:
+                    message = ""
+                status_label.text = message or f"Error: HTTP {response.status_code}"
+                status_label.classes(replace="text-sm mb-4 text-red-500")
+                ui.notify(status_label.text, type="negative")
+            except Exception as e:
+                status_label.text = f"Error: {e}"
+                status_label.classes(replace="text-sm mb-4 text-red-500")
+                ui.notify(str(e), type="negative")
+
+        ui.button("Change Password", on_click=change_password).props("color=primary")
+
+
+async def render_database_migrations() -> None:
+    """Render Database tab: migration status and Run migrations button."""
+    with ui.card().classes("w-full"):
+        ui.label("Database migrations").classes("font-semibold mb-2")
+        ui.label(
+            "Run pending Alembic migrations (e.g. after deploy or to fix \"no tenant\" errors)."
+        ).classes("text-sm text-gray-500 mb-4")
+
+        status_label = ui.label("Current revision: …").classes("text-sm mb-2")
+        output_label = ui.label("").classes("text-xs font-mono text-gray-600 mb-4 w-full break-all")
+
+        async def refresh_status() -> None:
+            status_label.text = "Current revision: …"
+            output_label.text = ""
+            try:
+                async with httpx.AsyncClient(headers=_auth_headers()) as client:
+                    r = await client.get(f"{API_BASE}/migrations/status", timeout=10)
+                    if r.status_code == 200:
+                        data = r.json()
+                        status_label.text = f"Current revision: {data.get('current', '?')}"
+                        if data.get("output"):
+                            output_label.text = data["output"]
+                    else:
+                        status_label.text = "Could not get status (check login)"
+                        output_label.classes(replace="text-xs font-mono text-red-600 mb-4 w-full break-all")
+            except Exception as e:
+                status_label.text = f"Error: {e}"
+                output_label.classes(replace="text-xs font-mono text-red-600 mb-4 w-full break-all")
+
+        await refresh_status()
+
+        async def run_upgrade() -> None:
+            status_label.text = "Running migrations…"
+            output_label.text = ""
+            try:
+                async with httpx.AsyncClient(headers=_auth_headers()) as client:
+                    r = await client.post(f"{API_BASE}/migrations/upgrade", timeout=130)
+                    data = r.json() if r.status_code == 200 else {}
+                    success = data.get("success", False)
+                    out = (data.get("output") or "").strip()
+                    err = (data.get("error") or "").strip()
+                    output_label.text = out + ("\n" + err if err else "")
+                    if success:
+                        status_label.text = "Migrations completed successfully"
+                        status_label.classes(replace="text-sm mb-2 text-green-600")
+                        ui.notify("Migrations completed", type="positive")
+                        await refresh_status()
+                    else:
+                        status_label.text = "Migrations failed"
+                        status_label.classes(replace="text-sm mb-2 text-red-600")
+                        output_label.classes(replace="text-xs font-mono text-red-600 mb-4 w-full break-all")
+                        ui.notify("Run failed — check output below", type="negative")
+            except Exception as e:
+                status_label.text = f"Error: {e}"
+                output_label.text = str(e)
+                output_label.classes(replace="text-xs font-mono text-red-600 mb-4 w-full break-all")
+                ui.notify(str(e), type="negative")
+
+        with ui.row().classes("gap-2"):
+            ui.button("Refresh status", on_click=refresh_status).props("outline")
+            ui.button("Run pending migrations", on_click=run_upgrade).props("color=primary")

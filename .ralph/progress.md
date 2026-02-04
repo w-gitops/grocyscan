@@ -1,195 +1,90 @@
-# GrocyScan Development Progress
+# Homebot Development Progress
 
-## Final Status: v1.0.0 COMPLETE
+## Project Status
 
-All 6 phases of the GrocyScan implementation have been completed.
+- **Project:** Homebot (formerly GrocyScan)
+- **Current Phase:** Phase 1 - Foundation
+- **Phase Documents:** See `prd/80.10-ralph-phases-overview.md`
 
 ---
 
-## Session Summary
+## Previous Project: GrocyScan v1.0.0 (COMPLETE)
+
+GrocyScan v1.0.0 was completed with NiceGUI stack. The project is being rebuilt as Homebot with:
+- Vue 3 + Quasar frontend (replacing NiceGUI)
+- Multi-tenant architecture with PostgreSQL RLS
+- QR code routing and label printing
+- Grocy API compatibility layer
+
+---
+
+## Homebot Phase Progress
 
 ### Phase 1: Foundation
-- Created project scaffolding with full directory structure
-- Implemented all 9 database models (User, Product, Barcode, Location, StockEntry, LookupCache, Job, ScanHistory, Setting)
-- Set up Alembic with initial migration
-- Created FastAPI application with health endpoints
-- Configured Pydantic settings with SecretStr for secrets
-- Set up structlog JSON logging with OpenTelemetry context
-- Built NiceGUI application shell with all pages
-- Implemented bcrypt authentication service
-- Created login page UI
-- Added session management middleware
-- Created Docker Compose configurations (dev and prod)
-- Set up pytest fixtures in conftest.py
+**Status:** Complete
 
-### Phase 2: Core Scanning
-- Implemented barcode validation (EAN-13, EAN-8, UPC-A, UPC-E, location codes)
-- Created scanner input handling component
-- Built camera scanning dialog (UI structure)
-- Implemented OpenFoodFacts lookup provider
-- Created Grocy API client with product/stock operations
-- Built product review popup component
+Criteria:
+- [x] [1] PostgreSQL database with homebot schema (migration 0002)
+- [x] [2] Tenants table with RLS
+- [x] [3] Users table with tenant membership
+- [x] [4] Alembic migrations configured
+- [x] [5] JWT authentication (POST /api/v2/auth/login)
+- [x] [6] API key authentication (HOMEBOT-API-KEY)
+- [x] [7] Password hashing with bcrypt
+- [x] [8] FastAPI app starts; GET /health returns 200
+- [x] [9] OpenAPI spec at /docs
+- [x] [10] Basic logging (correlation ID middleware)
 
-### Phase 3: Enhanced Lookup
-- Implemented go-upc provider
-- Implemented UPCItemDB provider
-- Implemented Brave Search provider
-- Created lookup manager with sequential/parallel strategies
-- Implemented Redis caching service (30-day TTL)
-- Built LLM client and optimizer via LiteLLM
+### Phase 2: Inventory Core
+**Status:** Complete
 
-### Phase 4: Full Features
-- Completed location barcode scanning support
-- Created touch-friendly date picker with quick-select
-- Implemented job queue system with background worker
-- Set up offline sync structure
-- Built product search capabilities
-- Completed settings UI with tabbed interface
+- Migrations 0003 (products+barcodes), 0004 (locations+closure), 0005 (stock+stock_transactions) in homebot schema.
+- v2 API: products (CRUD, search), locations (CRUD, descendants), stock (add, consume, transfer), lookup (barcode).
+- RLS and tenant context via X-Tenant-ID and get_db_homebot.
 
-### Phase 5: Observability
-- Completed structured logging with trace context
-- Set up OpenTelemetry tracing configuration
-- Created Prometheus custom metrics
-- Built log viewer UI page
-- Built job queue UI page
+### Phase 3: Device & UI
+**Status:** Complete (Option A: NiceGUI)
 
-### Phase 6: Production Readiness
-- Added unit tests for config, auth, barcode, exceptions
-- Added integration tests for health and scan endpoints
-- Created database model tests
-- Created install.sh for bare metal deployment
-- Wrote comprehensive README.md
-- Added rate limiting middleware
-- Created CHANGELOG.md
-- Tagged v1.0.0 release
+- Migration 0006: homebot.devices. v2 API: POST /api/v2/devices, GET/PATCH /api/v2/devices/me (X-Device-ID). Criteria 4,5,6 done.
+- Option A (NiceGUI): /api/me router mounted. Device registration, action mode, quick actions. Criteria 8, 9 done. Criteria 10, 11: product list with search, product detail with Edit.
+- **Criteria 1, 2, 3 (Option A):** NiceGUI is the frontend scaffold at :3334. Auth/device state in app.storage.user (device_fingerprint, api_cookie) and session (session_id cookie). Auth guards: _require_auth() in app.py; unauthenticated users redirected to /login; index / redirects to /login or /scan; login uses browser form submit so Set-Cookie is received; auth endpoint accepts form POST and returns 302 with cookie.
+- **Criterion 7:** Camera barcode scanner: BarcodeScanner component with camera button, html5-qrcode, formats UPC/EAN/CODE_128/QR; live camera requires HTTPS and permission (manual validation if 502/LAN).
+- **Criterion 12:** PWA: /manifest.json and /sw.js served from app/static/pwa/; manifest link and theme-color in index; service worker registered on load; app installable on supported browsers.
+
+### Vue/Quasar frontend (separate milestone)
+
+- **frontend/** added: Vue 3 + Quasar v2 + Vite, port 3335, proxy to API 3334. Pinia stores (auth, device), Vue Router with auth guard, Login/Scan/Products pages calling /api/auth/login, /api/me/device, /api/me/product-by-barcode, /api/me/products, /api/me/stock/add|consume. Device fingerprint in services/device.js. Build: `npm run build`; dev: `npm run dev`.
+
+### Phase 4: Labels & QR
+**Status:** Pending (requires Phase 3)
+
+### Phase 5: Recipes & Lists
+**Status:** Pending (requires Phase 3)
+
+### Phase 6: Intelligence
+**Status:** Pending (requires Phases 4, 5)
+
+### Phase 7: Documents & Returns
+**Status:** Pending (requires Phase 6)
 
 ---
 
-## Files Created
+## Session Log
 
-### Core Application
-- `app/__init__.py`
-- `app/config.py`
-- `app/main.py`
-
-### API Layer
-- `app/api/__init__.py`
-- `app/api/deps.py`
-- `app/api/routes/__init__.py`
-- `app/api/routes/auth.py`
-- `app/api/routes/health.py`
-- `app/api/routes/scan.py`
-- `app/api/routes/products.py`
-- `app/api/routes/locations.py`
-- `app/api/routes/jobs.py`
-- `app/api/routes/settings.py`
-- `app/api/routes/logs.py`
-- `app/api/middleware/__init__.py`
-- `app/api/middleware/session.py`
-- `app/api/middleware/rate_limit.py`
-
-### Core Utilities
-- `app/core/__init__.py`
-- `app/core/exceptions.py`
-- `app/core/logging.py`
-- `app/core/telemetry.py`
-- `app/core/metrics.py`
-
-### Database Layer
-- `app/db/__init__.py`
-- `app/db/database.py`
-- `app/db/models.py`
-- `app/db/crud/__init__.py`
-
-### Schemas
-- `app/schemas/__init__.py`
-- `app/schemas/common.py`
-- `app/schemas/scan.py`
-
-### Services
-- `app/services/__init__.py`
-- `app/services/auth.py`
-- `app/services/barcode.py`
-- `app/services/cache.py`
-- `app/services/lookup/__init__.py`
-- `app/services/lookup/base.py`
-- `app/services/lookup/manager.py`
-- `app/services/lookup/openfoodfacts.py`
-- `app/services/lookup/goupc.py`
-- `app/services/lookup/upcitemdb.py`
-- `app/services/lookup/brave.py`
-- `app/services/llm/__init__.py`
-- `app/services/llm/client.py`
-- `app/services/llm/optimizer.py`
-- `app/services/grocy/__init__.py`
-- `app/services/grocy/client.py`
-- `app/services/queue/__init__.py`
-- `app/services/queue/manager.py`
-- `app/services/queue/workers.py`
-
-### UI Layer
-- `app/ui/__init__.py`
-- `app/ui/app.py`
-- `app/ui/pages/__init__.py`
-- `app/ui/pages/login.py`
-- `app/ui/pages/scan.py`
-- `app/ui/pages/products.py`
-- `app/ui/pages/locations.py`
-- `app/ui/pages/jobs.py`
-- `app/ui/pages/logs.py`
-- `app/ui/pages/settings.py`
-- `app/ui/components/__init__.py`
-- `app/ui/components/scanner.py`
-- `app/ui/components/date_picker.py`
-- `app/ui/components/review_popup.py`
-
-### Tests
-- `tests/__init__.py`
-- `tests/conftest.py`
-- `tests/unit/__init__.py`
-- `tests/unit/test_config.py`
-- `tests/unit/test_exceptions.py`
-- `tests/unit/test_auth.py`
-- `tests/unit/test_barcode.py`
-- `tests/unit/test_lookup_providers.py`
-- `tests/integration/__init__.py`
-- `tests/integration/test_health.py`
-- `tests/integration/test_scan.py`
-- `tests/database/__init__.py`
-- `tests/database/test_models.py`
-
-### Migrations
-- `migrations/env.py`
-- `migrations/script.py.mako`
-- `migrations/versions/20260202_0001_initial_schema.py`
-
-### Docker
-- `docker/Dockerfile`
-- `docker/docker-compose.yml`
-- `docker/docker-compose.dev.yml`
-
-### Configuration
-- `pyproject.toml`
-- `requirements.txt`
-- `requirements-dev.txt`
-- `alembic.ini`
-- `.env.example`
-
-### Documentation
-- `README.md`
-- `CHANGELOG.md`
-
-### Scripts
-- `scripts/install.sh`
-- `scripts/generate_password_hash.py`
+### 2026-02-03
+- Phase 1 Foundation implemented: homebot schema migration (tenants, users, tenant_memberships + RLS), API v2 (JWT login, API key), root /health, correlation ID logging, Phase 1 tests (tests/phase1/). All 14 Phase 1 tests pass (11 passed, 3 DB tests skipped without DATABASE_URL=...homebot).
+- Phase 2 Inventory Core: migrations 0003 (products+barcodes), 0004 (locations+closure), 0005 (stock+stock_transactions); homebot_models; v2 routes products, locations, stock, lookup; tenant context (X-Tenant-ID, get_db_homebot); SessionMiddleware allows /api/v2/* to use route auth. Phase 2 tests added; all 17 passed (3 skipped).
+- Phase 3 Device backend: migration 0006 (homebot.devices), HomebotDevice model, POST /api/v2/devices (register), GET/PATCH /api/v2/devices/me (X-Device-ID), device preferences; Phase 3 tests (test_devices.py). Criteria 4,5,6 complete.
 
 ---
 
-## Next Steps
+## Commits
 
-The application is ready for:
-1. Manual testing with a real Grocy instance
-2. Additional provider implementations (Federation)
-3. Performance tuning based on real usage
-4. UI polish and mobile optimization
-5. Community feedback and contributions
+<!-- Ralph commits will be tracked here -->
+
+### 2026-02-03 12:59:53
+**Session 1 started** (model: opus-4.5-thinking)
+
+### 2026-02-03 (browser E2E)
+- Full browser E2E: deploy, login (admin/admin), device registration, scan lookup, SPA /scan, Products page.
+- **Fix:** Device registration failed with `NoReferencedTableError: ... 'homebot.tenants'`. Added minimal `HomebotTenant` ORM model in `app/db/homebot_models.py` so SQLAlchemy can resolve FKs from devices/products/etc. Deployed; registration and scan flow verified.

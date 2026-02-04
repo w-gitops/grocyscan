@@ -245,6 +245,69 @@ class LookupManager:
         results.sort(key=score_result, reverse=True)
         return results[0]
 
+    async def search_by_name(self, query: str, limit: int = 20) -> list[LookupResult]:
+        """Search for products by name across providers (Brave preferred over UPC sources).
+
+        Uses name_search_provider_order so Brave is preferred over OpenFoodFacts/UPC
+        results. Queries all name-search providers and merges results in that order
+        (first provider's results win on duplicate names).
+
+        Args:
+            query: Product name or search terms
+            limit: Max results to return
+
+        Returns:
+            list[LookupResult]: Merged results, ordered by name_search_provider_order
+        """
+        if not query or len(query.strip()) < 2:
+            return []
+        query = query.strip()
+        lookup_settings = _get_lookup_settings()
+        name_order = getattr(
+            lookup_settings,
+            "name_search_provider_order",
+            ["brave", "openfoodfacts"],
+        )
+        if not isinstance(name_order, list):
+            name_order = list(name_order) if name_order else ["brave", "openfoodfacts"]
+
+        # Providers that support search_by_name
+        name_search_providers = ["brave", "openfoodfacts"]
+        # Query each provider (in parallel)
+        async def search_one(name: str) -> list[LookupResult]:
+            if name in self.providers and hasattr(
+                self.providers[name], "search_by_name"
+            ):
+                return await self.providers[name].search_by_name(query, limit)
+            return []
+
+        try:
+            per_provider = await asyncio.gather(
+                *[search_one(p) for p in name_search_providers]
+            )
+            by_provider = dict(zip(name_search_providers, per_provider))
+        except Exception as e:
+            logger.warning("search_by_name failed", query=query, error=str(e))
+            return []
+
+        # Merge in name_search_provider_order (Brave first by default)
+        results: list[LookupResult] = []
+        seen_names: set[str] = set()
+        for provider_name in name_order:
+            if provider_name not in by_provider:
+                continue
+            for r in by_provider[provider_name]:
+                if not getattr(r, "found", True) or not getattr(r, "name", None):
+                    continue
+                key = (r.name or "").lower().strip()[:80]
+                if key in seen_names:
+                    continue
+                seen_names.add(key)
+                results.append(r)
+                if len(results) >= limit:
+                    return results[:limit]
+        return results[:limit]
+
     async def health_check(self) -> dict[str, bool]:
         """Check health of all providers.
 

@@ -47,16 +47,40 @@ class ScanResponse(BaseModel):
     fuzzy_matches: list[ProductInfo] = []
 
 
+class ScanByProductRequest(BaseModel):
+    """Request to start a scan session from a product selected by name search."""
+
+    grocy_product_id: int | None = Field(None, description="Existing Grocy product ID")
+    name: str = Field(..., min_length=1, max_length=500)
+    category: str | None = None
+    image_url: str | None = None
+    location_code: str | None = None
+
+
+class ScanByProductResponse(BaseModel):
+    """Response from starting a scan by product selection."""
+
+    scan_id: UUID
+    name: str
+    category: str | None = None
+    image_url: str | None = None
+    location_code: str | None = None
+    existing_in_grocy: bool = False
+
+
 class ScanConfirmRequest(BaseModel):
     """Request to confirm and add a scanned product."""
 
     name: str = Field(..., min_length=1, max_length=500)
+    description: str | None = Field(None, max_length=2000, description="Product description for Grocy")
+    brand: str | None = Field(None, max_length=200, description="Brand name (may use Grocy userfield)")
     category: str | None = None
     quantity: int = Field(1, ge=1, le=10000)
     location_code: str | None = None
     best_before: datetime | None = None
     price: float | None = None
     create_in_grocy: bool = True
+    use_llm_enhancement: bool = True  # If true, LLM cleans title/description/brand before creating
 
 
 class ScanConfirmResponse(BaseModel):

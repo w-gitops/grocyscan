@@ -27,7 +27,12 @@ class LookupSettings(BaseModel):
     
     strategy: str = "sequential"
     provider_order: list[str] = Field(
-        default_factory=lambda: ["openfoodfacts", "goupc", "upcitemdb", "brave"]
+        default_factory=lambda: ["openfoodfacts", "goupc", "upcitemdb", "brave"],
+        description="Order for barcode/UPC lookup (first match wins in sequential).",
+    )
+    name_search_provider_order: list[str] = Field(
+        default_factory=lambda: ["brave", "openfoodfacts"],
+        description="Order for search-by-name (Brave preferred; results merged in this order).",
     )
     timeout_seconds: int = 10
     
@@ -70,6 +75,12 @@ class UISettings(BaseModel):
     compact_mode: bool = False
 
 
+class AuthSettings(BaseModel):
+    """Authentication settings persisted outside env."""
+
+    password_hash: str = ""
+
+
 class AllSettings(BaseModel):
     """All application settings."""
     
@@ -78,6 +89,7 @@ class AllSettings(BaseModel):
     grocy: GrocySettings = Field(default_factory=GrocySettings)
     scanning: ScanningSettings = Field(default_factory=ScanningSettings)
     ui: UISettings = Field(default_factory=UISettings)
+    auth: AuthSettings = Field(default_factory=AuthSettings)
 
 
 class SettingsService:
@@ -88,7 +100,13 @@ class SettingsService:
     """
     
     SETTINGS_FILE = "data/settings.json"
-    SENSITIVE_KEYS = {"api_key", "goupc_api_key", "upcitemdb_api_key", "brave_api_key"}
+    SENSITIVE_KEYS = {
+        "api_key",
+        "goupc_api_key",
+        "upcitemdb_api_key",
+        "brave_api_key",
+        "password_hash",
+    }
     
     def __init__(self) -> None:
         self._settings: AllSettings | None = None
@@ -194,6 +212,11 @@ class SettingsService:
                 default_quantity_unit=app_settings.default_quantity_unit,
             ),
             ui=UISettings(),
+            auth=AuthSettings(
+                password_hash=app_settings.auth_password_hash.get_secret_value()
+                if app_settings.auth_password_hash
+                else "",
+            ),
         )
     
     def _decrypt_settings(self, data: dict) -> None:
@@ -258,6 +281,8 @@ class SettingsService:
             current.scanning = ScanningSettings(**{**current.scanning.model_dump(), **values})
         elif section == "ui":
             current.ui = UISettings(**{**current.ui.model_dump(), **values})
+        elif section == "auth":
+            current.auth = AuthSettings(**{**current.auth.model_dump(), **values})
         else:
             raise ValueError(f"Unknown settings section: {section}")
         
@@ -278,6 +303,8 @@ class SettingsService:
             return current.scanning
         elif section == "ui":
             return current.ui
+        elif section == "auth":
+            return current.auth
         else:
             raise ValueError(f"Unknown settings section: {section}")
     

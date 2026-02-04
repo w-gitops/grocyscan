@@ -202,6 +202,68 @@ class BraveSearchProvider(BaseLookupProvider):
             lookup_time_ms=lookup_time_ms,
         )
 
+    async def search_by_name(self, query: str, limit: int = 20) -> list[LookupResult]:
+        """Search for products by name using Brave web search.
+
+        Returns one LookupResult per search result (title as name).
+
+        Args:
+            query: Product name or search terms
+            limit: Max results to return
+
+        Returns:
+            list[LookupResult]: Search results as product-like entries
+        """
+        if not self.is_enabled() or not self.get_api_key():
+            return []
+        if not query or len(query.strip()) < 2:
+            return []
+        start_time = time.time()
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(
+                    f"{BRAVE_API_BASE}/web/search",
+                    params={
+                        "q": f"{query.strip()} product",
+                        "count": min(limit, 20),
+                    },
+                    headers={
+                        "X-Subscription-Token": self.get_api_key(),
+                        "Accept": "application/json",
+                    },
+                )
+                lookup_time_ms = int((time.time() - start_time) * 1000)
+                if response.status_code != 200:
+                    return []
+                data = response.json()
+                web_results = data.get("web", {}).get("results", [])
+                results: list[LookupResult] = []
+                for r in web_results[:limit]:
+                    title = r.get("title", "")
+                    if not title or len(title) < 3:
+                        continue
+                    name = re.sub(
+                        r"\s*[-|]\s*[A-Za-z]+\.?(com|org|net)?.*$", "", title
+                    ).strip()
+                    if not name:
+                        name = title
+                    thumbnail = r.get("thumbnail", {}).get("src") if isinstance(r.get("thumbnail"), dict) else None
+                    results.append(
+                        LookupResult(
+                            barcode="",
+                            found=True,
+                            provider=self.name,
+                            name=name[:200],
+                            description=(r.get("description") or "")[:500] or None,
+                            image_url=thumbnail,
+                            lookup_time_ms=lookup_time_ms,
+                        )
+                    )
+                return results
+        except Exception as e:
+            logger.warning("Brave search_by_name failed", query=query, error=str(e))
+            return []
+
     async def health_check(self) -> bool:
         """Check if Brave Search API is available."""
         api_key = self.get_api_key()

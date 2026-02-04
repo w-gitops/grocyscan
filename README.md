@@ -89,6 +89,10 @@ All configuration is via environment variables. See `.env.example` for all optio
 | `LLM_API_URL` | LLM API endpoint | `http://localhost:11434/v1` |
 | `LLM_MODEL` | LLM model name | `llama3.1:8b` |
 
+### Grocy custom fields (Brand)
+
+To store **Brand** in Grocy when adding products via scan, add a userfield named `Brand` for the `products` entity in Grocy (Settings → Userfields). See [docs/GROCY-USERFIELDS.md](docs/GROCY-USERFIELDS.md) for step-by-step setup and how LLM enhancement uses it.
+
 ### Lookup Providers
 
 Configure provider order and API keys:
@@ -146,8 +150,18 @@ grocyscan/
 ## Testing
 
 ```bash
-# Run all tests
-pytest
+# Tests require PostgreSQL (DATABASE_URL).
+# Start a local test DB:
+docker compose -f docker/docker-compose.test.yml up -d
+
+# Run all tests (explicit URL)
+DATABASE_URL=postgresql+asyncpg://grocyscan:grocyscan@localhost:5432/grocyscan_test \
+  python -m pytest tests/ -v --tb=short
+
+# Makefile helpers
+make test-db-up
+make test
+make test-db-down
 
 # Run with coverage
 pytest --cov=app --cov-report=html

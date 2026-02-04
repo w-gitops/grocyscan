@@ -1,79 +1,64 @@
 ---
-task: Build GrocyScan - Complete Implementation
-test_command: "python -m pytest tests/ -v"
-browser_validation: true
-base_url: "http://localhost:3334"
+task: Homebot Phase 3 - Device & UI
+test_command: pytest tests/phase3/ tests/phase2/ tests/phase1/ -v --tb=short
+browser_validation: false
 ---
 
-# Task: GrocyScan - COMPLETED
+# Task: Homebot Phase 3 - Device & UI
 
-All phases of the GrocyScan implementation are complete.
+Device registration, preferences, and UI (Vue/Quasar or NiceGUI validation).
 
-## Phase 1: Foundation - COMPLETED
+**PRD Reference:** [prd/80.13-ralph-phase-3-device-ui.md](prd/80.13-ralph-phase-3-device-ui.md)
 
-1. [x] Create project scaffolding with pyproject.toml and dependencies
-2. [x] Implement PostgreSQL database models (9 tables)
-3. [x] Set up Alembic with initial migration
-4. [x] Create FastAPI app shell with /health endpoint
-5. [x] Configure Pydantic settings with SecretStr
-6. [x] Set up structlog JSON logging
-7. [x] Create NiceGUI application shell with routing
-8. [x] Implement authentication service (bcrypt)
-9. [x] Build login page UI
-10. [x] Add session management middleware
-11. [x] Create Docker Compose configuration
-12. [x] Set up test fixtures in conftest.py
+## Success Criteria
 
-## Phase 2: Core Scanning - COMPLETED
+### Frontend Scaffold
 
-1. [x] Barcode validation (EAN-13, EAN-8, UPC-A, UPC-E, LOC-*)
-2. [x] Scanner input handling (USB/Bluetooth, manual)
-3. [x] Camera scanning component
-4. [x] OpenFoodFacts lookup provider
-5. [x] Basic Grocy integration
-6. [x] Product review popup
+- [x] **[1]** Vue 3 + Quasar project initialized (Option B) or use NiceGUI (Option A)
+- [x] **[2]** Pinia store configured (auth, device)
+- [x] **[3]** Router with auth guards
 
-## Phase 3: Enhanced Lookup - COMPLETED
+### Device Management
 
-1. [x] go-upc provider
-2. [x] UPCItemDB provider
-3. [x] Brave Search provider
-4. [x] Lookup manager (sequential/parallel strategies)
-5. [x] Redis caching (30-day TTL)
-6. [x] LLM integration via LiteLLM
+- [x] **[4]** Device registration on first visit <!-- POST /api/v2/devices -->
+- [x] **[5]** Device preferences stored <!-- PATCH /api/v2/devices/me -->
+- [x] **[6]** Device fingerprinting <!-- X-Device-ID, same fingerprint = same device -->
 
-## Phase 4: Full Features - COMPLETED
+### Scanning Interface
 
-1. [x] Location barcode scanning
-2. [x] Touch-friendly date picker
-3. [x] Job queue system with background worker
-4. [x] Offline support structure
-5. [x] Product search capabilities
-6. [x] Settings UI with tabbed interface
+- [x] **[7]** Camera barcode scanner works
+- [x] **[8]** Action mode selection
+- [x] **[9]** Quick actions after scan
 
-## Phase 5: Observability - COMPLETED
+### Product Views
 
-1. [x] Structured logging with OpenTelemetry context
-2. [x] OpenTelemetry tracing setup
-3. [x] Prometheus custom metrics
-4. [x] Log viewer UI
-5. [x] Job queue UI
+- [x] **[10]** Product list with search
+- [x] **[11]** Product detail view
+- [x] **[12]** PWA installable
 
-## Phase 6: Production Readiness - COMPLETED
+---
 
-1. [x] Unit and integration tests
-2. [x] Install scripts (Docker, bare metal)
-3. [x] Documentation (README, CHANGELOG)
-4. [x] Security (rate limiting, input validation)
-5. [x] v1.0.0 release
+## Context
 
-## Summary
+- **Deploy Target:** `192.168.200.37` via SSH (root)
+- **Install Path:** `/opt/grocyscan/`
+- **Port:** 3334 (API), 3335 (Vue target)
+- **Option A:** Validate with existing NiceGUI at :3334 first.
+- **Option B:** Build Vue/Quasar frontend at :3335.
 
-GrocyScan v1.0.0 is complete with:
-- Full barcode scanning and validation
-- Multi-provider product lookup with caching
-- LLM-powered product optimization
-- Grocy integration for inventory management
-- Responsive NiceGUI web interface
-- Complete observability stack
-- Production deployment options
+## Technical Notes
+
+- Migration 0006: homebot.devices (fingerprint, default_location_id, default_action, preferences).
+- v2 API: POST /api/v2/devices (register), GET/PATCH /api/v2/devices/me (X-Device-ID required for me).
+
+## Phase Navigation
+
+| Phase | Document | Status |
+|-------|----------|--------|
+| 1 | [Foundation](prd/80.11-ralph-phase-1-foundation.md) | Complete |
+| 2 | [Inventory](prd/80.12-ralph-phase-2-inventory.md) | Complete |
+| 3 | [Device & UI](prd/80.13-ralph-phase-3-device-ui.md) | **Current** |
+| 4 | [Labels & QR](prd/80.14-ralph-phase-4-labels-qr.md) | Pending |
+| 5 | [Recipes](prd/80.15-ralph-phase-5-recipes.md) | Pending |
+| 6 | [Intelligence](prd/80.16-ralph-phase-6-intelligence.md) | Pending |
+| 7 | [Documents](prd/80.17-ralph-phase-7-documents.md) | Pending |

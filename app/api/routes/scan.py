@@ -8,13 +8,18 @@ from fastapi import APIRouter, Request
 from app.core.logging import get_logger
 from app.schemas.scan import (
     ProductInfo,
+    ScanByProductRequest,
+    ScanByProductResponse,
     ScanConfirmRequest,
     ScanConfirmResponse,
     ScanRequest,
     ScanResponse,
 )
+from app.core.exceptions import GrocyError
 from app.services.barcode import BarcodeType, validate_barcode
 from app.services.grocy import grocy_client
+from app.services.llm import optimize_product_name
+from app.services.llm.client import llm_client
 from app.services.lookup import lookup_manager
 
 logger = get_logger(__name__)
@@ -140,6 +145,57 @@ async def scan_barcode(request: Request, scan_request: ScanRequest) -> ScanRespo
     )
 
 
+@router.post("/by-product", response_model=ScanByProductResponse)
+async def scan_by_product(
+    request: ScanByProductRequest,
+) -> ScanByProductResponse:
+    """Create a scan session from a product selected by name search.
+
+    Used when the user adds inventory via product name search instead of barcode.
+    Returns a scan_id that can be used with the confirm endpoint.
+    """
+    scan_id = uuid.uuid4()
+    grocy_product = None
+    if request.grocy_product_id:
+        grocy_product = await grocy_client.get_product(request.grocy_product_id)
+        if not grocy_product:
+            grocy_product = {"id": request.grocy_product_id}
+
+    product_info = ProductInfo(
+        name=request.name,
+        category=request.category,
+        image_url=request.image_url,
+        grocy_product_id=request.grocy_product_id,
+        is_new=request.grocy_product_id is None,
+    )
+
+    _scan_sessions[str(scan_id)] = {
+        "barcode": None,
+        "barcode_type": "PRODUCT",
+        "product": product_info.model_dump(),
+        "lookup_result": None,
+        "grocy_product": grocy_product,
+        "location_code": request.location_code,
+        "input_method": "name_search",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    logger.info(
+        "Scan session created from product search",
+        name=request.name,
+        grocy_product_id=request.grocy_product_id,
+    )
+
+    return ScanByProductResponse(
+        scan_id=scan_id,
+        name=request.name,
+        category=request.category,
+        image_url=request.image_url,
+        location_code=request.location_code,
+        existing_in_grocy=request.grocy_product_id is not None,
+    )
+
+
 @router.post("/{scan_id}/confirm", response_model=ScanConfirmResponse)
 async def confirm_scan(scan_id: str, confirm: ScanConfirmRequest) -> ScanConfirmResponse:
     """Confirm and add scanned product to inventory.
@@ -167,21 +223,66 @@ async def confirm_scan(scan_id: str, confirm: ScanConfirmRequest) -> ScanConfirm
     grocy_product_id = None
     grocy_stock_id = None
 
+    # Resolve final name, description, brand (LLM enhancement if enabled)
+    name_for_grocy = confirm.name
+    description_for_grocy = confirm.description or confirm.category or ""
+    brand_for_grocy = (confirm.brand or "").strip() or None
+    if not brand_for_grocy and session.get("product"):
+        brand_for_grocy = (session["product"].get("brand") or "").strip() or None
+
+    if confirm.create_in_grocy and confirm.use_llm_enhancement:
+        try:
+            if await llm_client.is_available():
+                lookup_desc = (session.get("product") or {}).get("description") or ""
+                optimized = await optimize_product_name(
+                    name=confirm.name,
+                    brand=confirm.brand or (session.get("product") or {}).get("brand"),
+                    description=confirm.description or lookup_desc,
+                    raw_data={"category": confirm.category},
+                )
+                name_for_grocy = optimized.get("name") or name_for_grocy
+                description_for_grocy = (optimized.get("description") or "").strip() or description_for_grocy
+                if (optimized.get("brand") or "").strip():
+                    brand_for_grocy = (optimized.get("brand") or "").strip()
+                if (optimized.get("category") or "").strip() and not description_for_grocy:
+                    description_for_grocy = optimized.get("category", "")
+        except Exception as e:
+            logger.warning("LLM enhancement skipped", error=str(e))
+
+    # Build Grocy description: include brand line if we have brand (in case userfield not supported)
+    if brand_for_grocy and description_for_grocy and "Brand:" not in description_for_grocy:
+        description_for_grocy = f"Brand: {brand_for_grocy}\n\n{description_for_grocy}"
+    elif brand_for_grocy and not description_for_grocy:
+        description_for_grocy = f"Brand: {brand_for_grocy}"
+
     try:
         if confirm.create_in_grocy:
             # Create or get product in Grocy
             if grocy_product:
                 grocy_product_id = grocy_product.get("id")
             else:
-                # Create new product
-                created = await grocy_client.create_product(
-                    name=confirm.name,
-                    description=confirm.category,  # Use category as description for now
-                )
+                # Create new product (optional Brand userfield if Grocy has it)
+                userfields = {"Brand": brand_for_grocy} if brand_for_grocy else None
+                try:
+                    created = await grocy_client.create_product(
+                        name=name_for_grocy,
+                        description=description_for_grocy,
+                        userfields=userfields,
+                    )
+                except GrocyError as e:
+                    # Some Grocy versions reject userfields in POST; retry without
+                    if userfields and "userfield" in str(e).lower():
+                        logger.warning("Grocy rejected userfields, creating product without Brand userfield")
+                        created = await grocy_client.create_product(
+                            name=name_for_grocy,
+                            description=description_for_grocy,
+                        )
+                    else:
+                        raise
                 grocy_product_id = created.get("created_object_id") or created.get("id")
 
-                # Add barcode to product
-                if grocy_product_id:
+                # Add barcode to product (only if we have a barcode, e.g. not from name search)
+                if grocy_product_id and barcode:
                     await grocy_client.add_barcode_to_product(grocy_product_id, barcode)
 
             # Add stock

@@ -1,5 +1,6 @@
 """OpenFoodFacts barcode lookup provider."""
 
+import inspect
 import time
 from typing import Any
 
@@ -34,17 +35,19 @@ class OpenFoodFactsProvider(BaseLookupProvider):
     name = "openfoodfacts"
 
     def __init__(self) -> None:
-        pass  # Settings read dynamically
+        self.enabled: bool | None = None  # Optional test override
 
     def is_enabled(self) -> bool:
         """Check if OpenFoodFacts is enabled."""
+        if self.enabled is not None:
+            return self.enabled
         return _get_settings().openfoodfacts_enabled
 
     @property
     def user_agent(self) -> str:
         """Get user agent string."""
         from app.config import settings
-        return settings.openfoodfacts_user_agent
+        return settings.openfoodfacts_user_agent_resolved
 
     @property
     def timeout(self) -> int:
@@ -95,6 +98,8 @@ class OpenFoodFactsProvider(BaseLookupProvider):
 
                 response.raise_for_status()
                 data = response.json()
+                if inspect.isawaitable(data):
+                    data = await data
 
                 if data.get("status") != 1:
                     logger.debug(
@@ -221,6 +226,61 @@ class OpenFoodFactsProvider(BaseLookupProvider):
             raw_data=product,
             lookup_time_ms=lookup_time_ms,
         )
+
+    async def search_by_name(self, query: str, limit: int = 20) -> list[LookupResult]:
+        """Search products by name on OpenFoodFacts.
+
+        Uses GET /api/v2/search. Rate limited to 10 req/min by OFF.
+
+        Args:
+            query: Search terms (product name)
+            limit: Max results to return
+
+        Returns:
+            list[LookupResult]: Matching products (barcode set to product code when available)
+        """
+        if not self.is_enabled():
+            return []
+        if not query or len(query.strip()) < 2:
+            return []
+        start_time = time.time()
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(
+                    f"{OFF_API_BASE}/search",
+                    headers={"User-Agent": self.user_agent},
+                    params={
+                        "search_terms": query.strip(),
+                        "page_size": min(limit, 24),
+                        "json": 1,
+                        "fields": "code,product_name,brands,generic_name,categories,"
+                        "image_url,quantity,nutrition_grades,nutriments,ingredients_text",
+                    },
+                )
+                lookup_time_ms = int((time.time() - start_time) * 1000)
+                if response.status_code != 200:
+                    return []
+                data = response.json()
+                products = data.get("products") or []
+                results: list[LookupResult] = []
+                for p in products[:limit]:
+                    if not p:
+                        continue
+                    # OFF search may return { code, product: {...} } or flat product
+                    product_data = p.get("product", p) if isinstance(p, dict) else p
+                    name = product_data.get("product_name") if isinstance(product_data, dict) else None
+                    if not name:
+                        continue
+                    barcode = p.get("code", "") if isinstance(p, dict) else ""
+                    result = self._parse_product(
+                        barcode or query, product_data, lookup_time_ms
+                    )
+                    result.barcode = barcode or query
+                    results.append(result)
+                return results
+        except Exception as e:
+            logger.warning("OpenFoodFacts search_by_name failed", query=query, error=str(e))
+            return []
 
     async def health_check(self) -> bool:
         """Check if OpenFoodFacts API is available.

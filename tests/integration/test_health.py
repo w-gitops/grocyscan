@@ -1,11 +1,13 @@
 """Integration tests for health endpoints."""
 
-from fastapi.testclient import TestClient
+import pytest
+from httpx import AsyncClient
 
 
-def test_health_endpoint(client: TestClient) -> None:
+@pytest.mark.asyncio
+async def test_health_endpoint(async_client: AsyncClient) -> None:
     """Test basic health check endpoint."""
-    response = client.get("/api/health")
+    response = await async_client.get("/api/health")
     assert response.status_code == 200
 
     data = response.json()
@@ -14,9 +16,10 @@ def test_health_endpoint(client: TestClient) -> None:
     assert "environment" in data
 
 
-def test_detailed_health_endpoint(client: TestClient) -> None:
+@pytest.mark.asyncio
+async def test_detailed_health_endpoint(async_client: AsyncClient) -> None:
     """Test detailed health check endpoint."""
-    response = client.get("/api/health/detailed")
+    response = await async_client.get("/api/health/detailed")
     assert response.status_code == 200
 
     data = response.json()

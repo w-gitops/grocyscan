@@ -3,6 +3,7 @@
 import tomllib
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -30,6 +31,10 @@ class Settings(BaseSettings):
     )
 
     # Application Core
+    app_title: str = Field(
+        default="HomeBot",
+        description="Product/app title shown in UI, docs, PWA manifest (set APP_TITLE to override)",
+    )
     grocyscan_version: str = _get_version()
     grocyscan_env: Literal["development", "staging", "production"] = "development"
     grocyscan_debug: bool = False
@@ -78,7 +83,17 @@ class Settings(BaseSettings):
     lookup_timeout_seconds: int = 10
 
     openfoodfacts_enabled: bool = True
-    openfoodfacts_user_agent: str = "GrocyScan/1.0"
+    openfoodfacts_user_agent: str = Field(
+        default="",
+        description="User-Agent for OpenFoodFacts; default is derived from app_title",
+    )
+
+    @property
+    def openfoodfacts_user_agent_resolved(self) -> str:
+        """Resolved User-Agent (app_title/version when openfoodfacts_user_agent not set)."""
+        if self.openfoodfacts_user_agent:
+            return self.openfoodfacts_user_agent
+        return f"{self.app_title}/1.0"
 
     goupc_enabled: bool = False
     goupc_api_key: SecretStr = SecretStr("")
@@ -105,6 +120,30 @@ class Settings(BaseSettings):
     auth_password_hash: SecretStr = SecretStr("")
     session_timeout_hours: int = 24
     session_absolute_timeout_days: int = 7
+    session_cookie_name: str = Field(
+        default="session_id",
+        description="Cookie name for browser sessions",
+    )
+    session_cookie_domain: str = Field(
+        default="",
+        description="Cookie domain for browser sessions (e.g. homebot.ssiops.com)",
+    )
+    session_cookie_samesite: Literal["lax", "strict", "none"] = "strict"
+    session_cookie_secure: bool | None = Field(
+        default=None,
+        description="Override Secure flag for session cookie (defaults to true in production)",
+    )
+    session_cookie_httponly: bool = True
+
+    # Homebot Phase 1: JWT and API key (comma-separated list of valid API keys)
+    secret_key: str = Field(
+        default="your-secret-key-here",
+        description="Secret key for JWT signing (set SECRET_KEY in production)",
+    )
+    homebot_api_keys: str = Field(
+        default="",
+        description="Comma-separated API keys for service account auth (HOMEBOT-API-KEY header)",
+    )
 
     external_api_enabled: bool = True
     external_api_rate_limit: int = 100
@@ -139,6 +178,34 @@ class Settings(BaseSettings):
                 raise ValueError(f"Invalid provider: {provider}")
         return ",".join(providers)
 
+    @field_validator("session_cookie_name", mode="before")
+    @classmethod
+    def normalize_cookie_name(cls, v: str) -> str:
+        value = (v or "").strip()
+        if not value:
+            raise ValueError("session_cookie_name cannot be empty")
+        return value
+
+    @field_validator("session_cookie_domain", mode="before")
+    @classmethod
+    def normalize_cookie_domain(cls, v: str) -> str:
+        if not v:
+            return ""
+        if isinstance(v, str):
+            value = v.strip()
+            if value.startswith(("http://", "https://")):
+                parsed = urlparse(value)
+                return parsed.hostname or ""
+            return value
+        return v
+
+    @field_validator("session_cookie_samesite", mode="before")
+    @classmethod
+    def normalize_cookie_samesite(cls, v: str) -> str:
+        if isinstance(v, str):
+            return v.lower()
+        return v
+
     @property
     def provider_list(self) -> list[str]:
         """Get lookup providers as a list."""
@@ -153,6 +220,24 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         """Check if running in production mode."""
         return self.grocyscan_env == "production"
+
+    @property
+    def session_cookie_domain_resolved(self) -> str | None:
+        """Resolved session cookie domain or None when unset."""
+        value = self.session_cookie_domain.strip()
+        return value or None
+
+    @property
+    def session_cookie_secure_resolved(self) -> bool:
+        """Resolved Secure flag for session cookies."""
+        if self.session_cookie_secure is None:
+            return self.is_production
+        return self.session_cookie_secure
+
+    @property
+    def api_key_list(self) -> list[str]:
+        """Valid API keys for HOMEBOT-API-KEY header."""
+        return [k.strip() for k in self.homebot_api_keys.split(",") if k.strip()]
 
 
 # Global settings instance

@@ -39,6 +39,8 @@ class BarcodeScanner:
         self._input: ui.input | None = None
         self._camera_dialog: ui.dialog | None = None
         self._scanner_container_id = f"barcode-scanner-{id(self)}"
+        self._scanner_gun_mode = False
+        self._scanner_gun_button: ui.button | None = None
 
     def render(self) -> None:
         """Render the scanner component."""
@@ -65,10 +67,19 @@ class BarcodeScanner:
                     "color=primary"
                 ).tooltip("Open camera scanner")
 
+            # Scanner Gun Mode toggle (crop_free = laser scan / viewfinder icon)
+            self._scanner_gun_button = ui.button(
+                icon="crop_free",
+                on_click=self._toggle_scanner_gun_mode,
+            ).props("outline").tooltip("Enable Scanner Gun Mode")
+
             # Submit button - use async handler
             ui.button(icon="search", on_click=self._handle_submit).props(
                 "color=primary outline"
             ).tooltip("Look up barcode")
+
+        # Restore Scanner Gun Mode from localStorage after render
+        ui.timer(0.2, self._restore_scanner_gun_mode, once=True)
 
     async def _handle_submit(self, e: Any = None) -> None:
         """Handle barcode submission from events."""
@@ -80,6 +91,9 @@ class BarcodeScanner:
                 result = self.on_scan(barcode)
                 if inspect.iscoroutine(result):
                     await result
+                # Re-focus if Scanner Gun Mode is active
+                if self._scanner_gun_mode:
+                    await self.focus_input()
 
     async def _handle_input_change(self, e: dict) -> None:
         """Handle input changes for scanner detection.
@@ -100,6 +114,54 @@ class BarcodeScanner:
             result = self.on_scan(barcode)
             if inspect.iscoroutine(result):
                 await result
+            if self._scanner_gun_mode:
+                await self.focus_input()
+
+    async def _toggle_scanner_gun_mode(self) -> None:
+        """Toggle Scanner Gun Mode on/off."""
+        self._scanner_gun_mode = not self._scanner_gun_mode
+
+        if self._scanner_gun_mode:
+            if self._scanner_gun_button:
+                self._scanner_gun_button.props(remove="outline")
+                self._scanner_gun_button.props("color=primary")
+                self._scanner_gun_button.tooltip("Disable Scanner Gun Mode")
+            if self._input:
+                self._input.classes(add="ring-2 ring-blue-500")
+                await self.focus_input()
+            await ui.run_javascript('localStorage.setItem("scannerGunMode", "true")')
+        else:
+            if self._scanner_gun_button:
+                self._scanner_gun_button.props("outline")
+                self._scanner_gun_button.props(remove="color=primary")
+                self._scanner_gun_button.tooltip("Enable Scanner Gun Mode")
+            if self._input:
+                self._input.classes(remove="ring-2 ring-blue-500")
+            await ui.run_javascript('localStorage.setItem("scannerGunMode", "false")')
+
+    async def focus_input(self) -> None:
+        """Focus the barcode input field."""
+        if self._input:
+            self._input.run_method("focus")
+
+    async def restore_focus_if_gun_mode(self) -> None:
+        """Restore focus to input if Scanner Gun Mode is active.
+
+        Call this from parent page when popup closes.
+        """
+        if self._scanner_gun_mode:
+            await self.focus_input()
+
+    async def _restore_scanner_gun_mode(self) -> None:
+        """Restore Scanner Gun Mode state from localStorage."""
+        try:
+            result = await ui.run_javascript(
+                'return localStorage.getItem("scannerGunMode")'
+            )
+            if result == "true" and not self._scanner_gun_mode:
+                await self._toggle_scanner_gun_mode()
+        except Exception:
+            pass
 
     def _open_camera_dialog(self) -> None:
         """Open the camera scanner dialog with html5-qrcode."""

@@ -13,9 +13,12 @@ logger = get_logger(__name__)
 
 # Paths that don't require authentication
 PUBLIC_PATHS = {
+    "/health",
     "/api/health",
     "/api/health/detailed",
     "/api/auth/login",
+    "/api/v2/health",
+    "/api/v2/auth/login",
     "/docs",
     "/redoc",
     "/openapi.json",
@@ -51,8 +54,12 @@ class SessionMiddleware(BaseHTTPMiddleware):
             request.state.username = "admin"
             return await call_next(request)
 
+        # API v2 uses Bearer / HOMEBOT-API-KEY; let route dependencies enforce auth
+        if request.url.path.startswith("/api/v2/"):
+            return await call_next(request)
+
         # Get session cookie
-        session_id = request.cookies.get("session_id")
+        session_id = request.cookies.get(settings.session_cookie_name)
         if not session_id:
             # For API requests without session, return 401
             if request.url.path.startswith("/api/"):
@@ -70,7 +77,11 @@ class SessionMiddleware(BaseHTTPMiddleware):
             # Invalid or expired session
             response = await call_next(request)
             # Clear the invalid session cookie
-            response.delete_cookie("session_id")
+            response.delete_cookie(
+                settings.session_cookie_name,
+                domain=settings.session_cookie_domain_resolved,
+                path="/",
+            )
             return response
 
         # Attach user info to request

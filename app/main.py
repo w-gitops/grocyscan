@@ -1,12 +1,30 @@
 """GrocyScan FastAPI application entry point."""
 
+import json
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from starlette.exceptions import HTTPException
+from starlette.staticfiles import StaticFiles
 
+
+class SpaStaticFiles(StaticFiles):
+    """StaticFiles that serves index.html for missing paths (SPA client-side routing)."""
+
+    async def get_response(self, path: str, scope: dict):
+        """Serve index.html when path is not a file (so /scan, /login etc. work on hard refresh)."""
+        try:
+            return await super().get_response(path, scope)
+        except HTTPException as exc:
+            if exc.status_code == 404 and path.strip("/") and path != "index.html":
+                return await super().get_response("index.html", scope)
+            raise
+
+from app.api.middleware.correlation_id import CorrelationIdMiddleware
 from app.api.middleware.rate_limit import RateLimitMiddleware
 from app.api.middleware.session import SessionMiddleware
 from app.api.routes import api_router
@@ -18,9 +36,7 @@ from app.core.telemetry import configure_telemetry, instrument_fastapi
 from app.db.database import close_db, init_db
 from app.services.cache import cache_service
 from app.services.queue import job_queue, register_workers
-from app.ui.app import configure_nicegui
 
-# Configure logging first
 configure_logging()
 logger = get_logger(__name__)
 
@@ -39,7 +55,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     # Startup
     logger.info(
-        "Starting GrocyScan",
+        "Starting %s",
+        settings.app_title,
         version=settings.grocyscan_version,
         environment=settings.grocyscan_env,
     )
@@ -68,7 +85,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await cache_service.disconnect()
 
     # Shutdown
-    logger.info("Shutting down GrocyScan")
+    logger.info("Shutting down %s", settings.app_title)
     await close_db()
 
 
@@ -79,7 +96,7 @@ def create_app() -> FastAPI:
         FastAPI: Configured application instance
     """
     app = FastAPI(
-        title="GrocyScan",
+        title=settings.app_title,
         description="Barcode scanning app for Grocy inventory management",
         version=settings.grocyscan_version,
         docs_url="/docs" if settings.docs_enabled else None,
@@ -106,9 +123,48 @@ def create_app() -> FastAPI:
 
     # Add session middleware
     app.add_middleware(SessionMiddleware)
+    # Correlation ID (Phase 1: requests logged with correlation ID)
+    app.add_middleware(CorrelationIdMiddleware)
 
     # Include API routes
     app.include_router(api_router, prefix="/api")
+
+    # Root health (Phase 1: GET /health returns 200)
+    @app.get("/health")
+    async def root_health() -> dict[str, str]:
+        return {"status": "healthy"}
+
+    # PWA (Phase 3 [12]): manifest and service worker for installability
+    _pwa_dir = Path(__file__).parent / "static" / "pwa"
+
+    @app.get("/manifest.json", include_in_schema=False)
+    async def pwa_manifest() -> JSONResponse:
+        manifest_path = _pwa_dir / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["name"] = settings.app_title
+        manifest["short_name"] = settings.app_title
+        return JSONResponse(
+            manifest,
+            media_type="application/manifest+json",
+            headers={"Cache-Control": "public, max-age=300"},
+        )
+
+    @app.get("/sw.js", include_in_schema=False)
+    async def pwa_service_worker() -> FileResponse:
+        return FileResponse(
+            _pwa_dir / "sw.js",
+            media_type="application/javascript",
+            headers={"Service-Worker-Allowed": "/"},
+        )
+
+    # Vue frontend at / when frontend/dist exists (NiceGUI disabled)
+    _frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
+    if _frontend_dist.exists():
+        app.mount(
+            "/",
+            SpaStaticFiles(directory=_frontend_dist, html=True),
+            name="vue-app",
+        )
 
     # Add metrics endpoint
     if settings.metrics_enabled:
@@ -183,17 +239,6 @@ def create_app() -> FastAPI:
 
     # Instrument with OpenTelemetry
     instrument_fastapi(app)
-
-    # Configure NiceGUI
-    configure_nicegui()
-
-    # Integrate NiceGUI with FastAPI
-    from nicegui import ui
-    ui.run_with(
-        app,
-        title="GrocyScan",
-        favicon="🛒",
-    )
 
     return app
 

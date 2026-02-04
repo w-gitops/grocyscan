@@ -1,0 +1,39 @@
+---
+description: Optional Ralph Wiggum usage - enable when you want autonomous task-driven development
+globs: ["RALPH_TASK.md", ".ralph/**", ".cursor/skills/ralph-wiggum/**"]
+alwaysApply: false
+---
+
+# Using Ralph Wiggum When You Want
+
+This rule is **optional** (alwaysApply: false). Enable it when you want to use the Ralph Wiggum methodology for a session.
+
+## When to Enable
+
+- You want autonomous, task-driven development from `RALPH_TASK.md`
+- You're starting a Ralph session: "Follow the Ralph Wiggum protocol. Work on RALPH_TASK.md"
+- You have unchecked criteria and want the agent to work through them one at a time
+
+## What Gets Used
+
+When Ralph is enabled (this rule or the main rule), the agent should:
+
+1. **Read** `.cursor/rules/ralph-wiggum.mdc` – main protocol (startup sequence, work loop, signals)
+2. **Read** `.cursor/skills/ralph-wiggum/SKILL.md` – full methodology and references
+3. **Use** `RALPH_TASK.md` for criteria and `.ralph/` for state (progress, guardrails, screenshots)
+
+## Making Ralph Optional vs Always-On
+
+- **Ralph always on**: Keep `.cursor/rules/ralph-wiggum.mdc` with `alwaysApply: true` (current setup).
+- **Ralph opt-in**: In `.cursor/rules/ralph-wiggum.mdc`, set `alwaysApply: false`. Then enable the "Ralph Wiggum" rule manually in Cursor when starting a Ralph session, or rely on this rule when `RALPH_TASK.md` / `.ralph/` files are in context.
+
+## Quick Start (Ralph Session)
+
+1. Ensure `RALPH_TASK.md` exists and has unchecked `[ ]` criteria.
+2. Start a new Agent chat.
+3. Say: "Follow the Ralph Wiggum protocol. Work on RALPH_TASK.md"
+4. The agent will read guardrails, progress, then work through criteria.
+
+## Source
+
+Ralph Wiggum methodology is installed from **cursor-command** (`C:\git\cursor-command`). To update: copy from `cursor-command/rules/ralph-wiggum.mdc` and `cursor-command/skills/ralph-wiggum/` into this project. Grocyscan’s rule keeps project-specific MCP details (cursor-browser-extension).
