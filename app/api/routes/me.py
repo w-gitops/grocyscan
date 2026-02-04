@@ -4,24 +4,27 @@ Uses session cookie auth; requires X-Device-ID header for device operations.
 Resolves tenant from first tenant in DB (single-tenant default).
 """
 
+import re
 import uuid
 from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
 from app.db.homebot_models import (
     HomebotBarcode,
     HomebotDevice,
+    HomebotLocation,
     HomebotProduct,
     HomebotStock,
     HomebotStockTransaction,
 )
 from app.schemas.v2.device import DeviceCreate, DeviceResponse, DeviceUpdatePreferences
+from app.schemas.v2.product import ProductResponse, ProductUpdate
 
 router = APIRouter()
 
@@ -233,6 +236,108 @@ async def get_product_by_barcode_me(
             )
         _barcode_row, product = row
         return {"product_id": str(product.id), "name": product.name}
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
+
+
+@router.get("/products", response_model=list[ProductResponse])
+async def list_products_me(
+    request: Request,
+    q: str | None = None,
+    x_device_id: str | None = Header(None, alias="X-Device-ID"),
+) -> list[ProductResponse]:
+    """List homebot products for device tenant (session auth). Optional ?q= search."""
+    async for session, tenant_id, _ in _session_device_context(request, x_device_id):
+        await session.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": str(tenant_id)})
+        stmt = select(HomebotProduct).where(HomebotProduct.deleted_at.is_(None))
+        if q and q.strip():
+            pattern = f"%{q.strip().lower()}%"
+            stmt = stmt.where(
+                or_(
+                    HomebotProduct.name.ilike(pattern),
+                    HomebotProduct.name_normalized.ilike(pattern),
+                )
+            )
+        result = await session.execute(stmt)
+        products = result.scalars().unique().all()
+        return [ProductResponse.model_validate(p) for p in products]
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
+
+
+@router.get("/products/{product_id}")
+async def get_product_detail_me(
+    product_id: UUID,
+    request: Request,
+    x_device_id: str | None = Header(None, alias="X-Device-ID"),
+) -> dict:
+    """Product detail with stock per location (session auth)."""
+    async for session, tenant_id, _ in _session_device_context(request, x_device_id):
+        await session.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": str(tenant_id)})
+        r = await session.execute(
+            select(HomebotProduct).where(
+                HomebotProduct.id == product_id,
+                HomebotProduct.deleted_at.is_(None),
+            )
+        )
+        product = r.scalar_one_or_none()
+        if not product:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+        # Stock rows with location name
+        stock_r = await session.execute(
+            select(HomebotStock, HomebotLocation)
+            .outerjoin(HomebotLocation, HomebotStock.location_id == HomebotLocation.id)
+            .where(
+                HomebotStock.tenant_id == tenant_id,
+                HomebotStock.product_id == product_id,
+                HomebotStock.quantity > 0,
+            )
+        )
+        stock_list = [
+            {
+                "location_id": str(row[0].location_id) if row[0].location_id else None,
+                "location_name": row[1].name if row[1] else "Unspecified",
+                "quantity": row[0].quantity,
+            }
+            for row in stock_r.all()
+        ]
+        return {
+            "product": ProductResponse.model_validate(product),
+            "stock": stock_list,
+        }
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
+
+
+def _normalize_name(name: str) -> str:
+    """Lowercase and collapse whitespace for search."""
+    return re.sub(r"\s+", " ", name.lower().strip()) if name else ""
+
+
+@router.patch("/products/{product_id}", response_model=ProductResponse)
+async def update_product_me(
+    product_id: UUID,
+    body: ProductUpdate,
+    request: Request,
+    x_device_id: str | None = Header(None, alias="X-Device-ID"),
+) -> ProductResponse:
+    """Update product (partial, session auth)."""
+    async for session, tenant_id, _ in _session_device_context(request, x_device_id):
+        await session.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": str(tenant_id)})
+        r = await session.execute(
+            select(HomebotProduct).where(
+                HomebotProduct.id == product_id,
+                HomebotProduct.deleted_at.is_(None),
+            )
+        )
+        product = r.scalar_one_or_none()
+        if not product:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+        data = body.model_dump(exclude_unset=True)
+        if "name" in data and data["name"]:
+            data["name_normalized"] = _normalize_name(data["name"]) or None
+        for key, value in data.items():
+            setattr(product, key, value)
+        await session.commit()
+        await session.refresh(product)
+        return ProductResponse.model_validate(product)
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
 
 

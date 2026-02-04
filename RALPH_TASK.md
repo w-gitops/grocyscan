@@ -32,8 +32,8 @@ Device registration, preferences, and UI (Vue/Quasar or NiceGUI validation).
 
 ### Product Views
 
-- [ ] **[10]** Product list with search
-- [ ] **[11]** Product detail view
+- [x] **[10]** Product list with search
+- [x] **[11]** Product detail view
 - [ ] **[12]** PWA installable
 
 ---
