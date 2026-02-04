@@ -402,6 +402,39 @@ async def list_locations_me(
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
 
 
+class MeLocationCreate(BaseModel):
+    """Create location request for /api/me/locations."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    location_type: str = Field(default="shelf", max_length=50)
+    description: str | None = None
+    is_freezer: bool = False
+
+
+@router.post("/locations", response_model=LocationResponse, status_code=status.HTTP_201_CREATED)
+async def create_location_me(
+    request: Request,
+    body: MeLocationCreate,
+    x_device_id: str | None = Header(None, alias="X-Device-ID"),
+) -> LocationResponse:
+    """Create a homebot location for device tenant (session auth)."""
+    async for session, tenant_id, _ in _session_device_context(request, x_device_id):
+        await session.execute(_set_tenant_id_stmt(tenant_id))
+        loc = HomebotLocation(
+            tenant_id=tenant_id,
+            name=body.name,
+            location_type=body.location_type,
+            description=body.description,
+            is_freezer=body.is_freezer,
+            sort_order=0,
+        )
+        session.add(loc)
+        await session.commit()
+        await session.refresh(loc)
+        return LocationResponse.model_validate(loc)
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
+
+
 @router.post("/stock/add")
 async def add_stock_me(
     request: Request,

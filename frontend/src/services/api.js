@@ -139,6 +139,16 @@ export async function getMeLocations(deviceId) {
   return res.json()
 }
 
+export async function createMeLocation(deviceId, data) {
+  const res = await apiFetch('/api/me/locations', {
+    method: 'POST',
+    headers: { 'X-Device-ID': deviceId },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw apiErrorFromResponse(res, await res.text())
+  return res.json()
+}
+
 // Logs (session only)
 export async function getLogs() {
   const res = await apiFetch('/api/logs')

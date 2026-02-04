@@ -114,6 +114,59 @@
         </q-card-section>
       </q-card>
     </q-dialog>
+
+    <!-- Product Review popup -->
+    <q-dialog v-model="reviewDialog">
+      <q-card style="min-width: 350px; max-width: 450px">
+        <q-card-section>
+          <div class="text-h6">{{ reviewData.found ? 'Product Found' : 'Product Not Found' }}</div>
+        </q-card-section>
+        <q-card-section>
+          <div class="text-subtitle1 q-mb-sm">{{ reviewData.name || reviewData.barcode }}</div>
+          <div v-if="reviewData.barcode" class="text-caption text-grey q-mb-md">Barcode: {{ reviewData.barcode }}</div>
+          
+          <q-input
+            v-model.number="reviewData.quantity"
+            label="Quantity"
+            type="number"
+            min="1"
+            outlined
+            dense
+            class="q-mb-sm"
+          />
+          
+          <q-select
+            v-if="locations.length"
+            v-model="reviewData.location_id"
+            :options="locationOptions"
+            label="Location"
+            outlined
+            dense
+            emit-value
+            map-options
+            clearable
+          />
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn flat label="Cancel" v-close-popup />
+          <q-btn
+            v-if="reviewData.found"
+            flat
+            :label="actionMode === 'consume' ? 'Consume' : 'Add to Stock'"
+            :color="actionMode === 'consume' ? 'orange' : 'primary'"
+            @click="confirmReview"
+            :loading="reviewLoading"
+          />
+          <q-btn
+            v-else
+            flat
+            label="Not in inventory"
+            color="grey"
+            disable
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
@@ -146,6 +199,9 @@ const recentScans = ref([])
 const locations = ref([])
 const defaultLocationId = ref(null)
 const cameraActive = ref(false)
+const reviewDialog = ref(false)
+const reviewLoading = ref(false)
+const reviewData = ref({ barcode: '', name: '', found: false, product_id: null, quantity: 1, location_id: null })
 let html5QrCode = null
 
 const locationOptions = computed(() => locations.value.map(l => ({ label: l.name, value: l.id })))
@@ -292,23 +348,58 @@ async function onLookup() {
     if (res) {
       productName.value = res.name
       productId.value = res.product_id
-      addRecentScan(code, res.name, true)
-      // Auto-execute based on action mode
-      if (actionMode.value === 'add') {
-        await quickAdd(1)
-      } else if (actionMode.value === 'consume') {
-        await quickConsume(1)
+      // Open review dialog with product info
+      reviewData.value = {
+        barcode: code,
+        name: res.name,
+        found: true,
+        product_id: res.product_id,
+        quantity: 1,
+        location_id: defaultLocationId.value,
       }
-      // transfer mode: just show result, user can pick action
+      reviewDialog.value = true
     } else {
       productName.value = ''
       productId.value = null
-      addRecentScan(code, null, false)
-      $q.notify({ type: 'info', message: 'Product not in Homebot inventory' })
+      // Open review dialog showing not found
+      reviewData.value = {
+        barcode: code,
+        name: '',
+        found: false,
+        product_id: null,
+        quantity: 1,
+        location_id: defaultLocationId.value,
+      }
+      reviewDialog.value = true
     }
   } catch (e) {
     addRecentScan(code, null, false)
     $q.notify({ type: 'negative', message: e.message || 'Lookup failed' })
+  }
+}
+
+async function confirmReview() {
+  if (!reviewData.value.found || !reviewData.value.product_id) return
+  reviewLoading.value = true
+  const fp = await deviceStore.ensureFingerprint()
+  try {
+    const qty = reviewData.value.quantity || 1
+    const locId = reviewData.value.location_id || null
+    if (actionMode.value === 'consume') {
+      await consumeStock(fp, reviewData.value.product_id, qty, locId)
+      $q.notify({ type: 'positive', message: `Consumed ${qty}` })
+    } else {
+      await addStock(fp, reviewData.value.product_id, qty, locId)
+      $q.notify({ type: 'positive', message: `Added ${qty}` })
+    }
+    addRecentScan(reviewData.value.barcode, reviewData.value.name, true)
+    reviewDialog.value = false
+    barcode.value = ''
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e.message || 'Action failed' })
+    addRecentScan(reviewData.value.barcode, reviewData.value.name, false)
+  } finally {
+    reviewLoading.value = false
   }
 }
 

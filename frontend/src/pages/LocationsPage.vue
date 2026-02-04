@@ -1,6 +1,10 @@
 <template>
   <q-page class="q-pa-md">
-    <div class="text-h5 q-mb-md">Locations</div>
+    <div class="row items-center q-mb-md">
+      <div class="text-h5">Locations</div>
+      <q-space />
+      <q-btn icon="add" label="Add Location" color="primary" @click="addDialog = true" />
+    </div>
 
     <q-card v-if="loading" flat bordered class="q-mb-md">
       <q-card-section>Loading...</q-card-section>
@@ -19,23 +23,52 @@
     </q-list>
 
     <q-card v-else flat bordered>
-      <q-card-section>No locations configured. Add locations via Settings or API.</q-card-section>
+      <q-card-section>No locations configured. Click "Add Location" to create one.</q-card-section>
     </q-card>
+
+    <!-- Add Location dialog -->
+    <q-dialog v-model="addDialog">
+      <q-card style="min-width: 320px">
+        <q-card-section>
+          <div class="text-h6">Add Location</div>
+        </q-card-section>
+        <q-card-section>
+          <q-input v-model="newLoc.name" label="Name" outlined dense class="q-mb-sm" />
+          <q-input v-model="newLoc.description" label="Description (optional)" outlined dense class="q-mb-sm" />
+          <q-select
+            v-model="newLoc.location_type"
+            :options="['shelf', 'fridge', 'freezer', 'pantry', 'cabinet', 'other']"
+            label="Type"
+            outlined
+            dense
+            class="q-mb-sm"
+          />
+          <q-toggle v-model="newLoc.is_freezer" label="Is freezer" />
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn flat label="Cancel" v-close-popup />
+          <q-btn flat label="Add" color="primary" @click="createLocation" :loading="saving" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useDeviceStore } from '../stores/device'
-import { getMeLocations } from '../services/api'
+import { getMeLocations, createMeLocation } from '../services/api'
 import { useQuasar } from 'quasar'
 
 const $q = useQuasar()
 const deviceStore = useDeviceStore()
 const locations = ref([])
 const loading = ref(false)
+const addDialog = ref(false)
+const saving = ref(false)
+const newLoc = ref({ name: '', description: '', location_type: 'shelf', is_freezer: false })
 
-onMounted(async () => {
+async function loadLocations() {
   loading.value = true
   try {
     const fp = await deviceStore.ensureFingerprint()
@@ -45,5 +78,27 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-})
+}
+
+async function createLocation() {
+  if (!newLoc.value.name.trim()) {
+    $q.notify({ type: 'warning', message: 'Name is required' })
+    return
+  }
+  saving.value = true
+  try {
+    const fp = await deviceStore.ensureFingerprint()
+    await createMeLocation(fp, newLoc.value)
+    addDialog.value = false
+    newLoc.value = { name: '', description: '', location_type: 'shelf', is_freezer: false }
+    $q.notify({ type: 'positive', message: 'Location added' })
+    await loadLocations()
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e.message || 'Failed to create location' })
+  } finally {
+    saving.value = false
+  }
+}
+
+onMounted(loadLocations)
 </script>
