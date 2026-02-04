@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.routes import auth, health, jobs, locations, logs, lookup, me, products, scan, settings
+from app.api.routes import auth, health, jobs, locations, logs, lookup, me, migrations, products, scan, settings
 from app.api.routes.v2 import v2_router
 
 api_router = APIRouter()
@@ -18,4 +18,5 @@ api_router.include_router(lookup.router, prefix="/lookup", tags=["lookup"])
 api_router.include_router(locations.router, prefix="/locations", tags=["locations"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 api_router.include_router(settings.router, prefix="/settings", tags=["settings"])
+api_router.include_router(migrations.router, prefix="/migrations", tags=["migrations"])
 api_router.include_router(logs.router, prefix="/logs", tags=["logs"])

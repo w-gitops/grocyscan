@@ -95,6 +95,7 @@ async def render() -> None:
             lookup_tab = ui.tab("Lookup")
             scanning_tab = ui.tab("Scanning")
             ui_tab = ui.tab("UI")
+            database_tab = ui.tab("Database")
 
         with ui.tab_panels(tabs, value=grocy_tab).classes("w-full"):
             # ==================== GROCY SETTINGS ====================
@@ -116,6 +117,10 @@ async def render() -> None:
             # ==================== UI SETTINGS ====================
             with ui.tab_panel(ui_tab):
                 await render_ui_settings()
+
+            # ==================== DATABASE MIGRATIONS ====================
+            with ui.tab_panel(database_tab):
+                await render_database_migrations()
 
     create_mobile_nav()
 
@@ -760,3 +765,66 @@ async def render_ui_settings() -> None:
                 ui.notify(message, type="negative")
         
         ui.button("Save Theme Preference", on_click=save_ui).props("color=primary")
+
+
+async def render_database_migrations() -> None:
+    """Render Database tab: migration status and Run migrations button."""
+    with ui.card().classes("w-full"):
+        ui.label("Database migrations").classes("font-semibold mb-2")
+        ui.label(
+            "Run pending Alembic migrations (e.g. after deploy or to fix \"no tenant\" errors)."
+        ).classes("text-sm text-gray-500 mb-4")
+
+        status_label = ui.label("Current revision: …").classes("text-sm mb-2")
+        output_label = ui.label("").classes("text-xs font-mono text-gray-600 mb-4 w-full break-all")
+
+        async def refresh_status() -> None:
+            status_label.text = "Current revision: …"
+            output_label.text = ""
+            try:
+                async with httpx.AsyncClient() as client:
+                    r = await client.get(f"{API_BASE}/migrations/status", timeout=10)
+                    if r.status_code == 200:
+                        data = r.json()
+                        status_label.text = f"Current revision: {data.get('current', '?')}"
+                        if data.get("output"):
+                            output_label.text = data["output"]
+                    else:
+                        status_label.text = "Could not get status (check login)"
+                        output_label.classes(replace="text-xs font-mono text-red-600 mb-4 w-full break-all")
+            except Exception as e:
+                status_label.text = f"Error: {e}"
+                output_label.classes(replace="text-xs font-mono text-red-600 mb-4 w-full break-all")
+
+        await refresh_status()
+
+        async def run_upgrade() -> None:
+            status_label.text = "Running migrations…"
+            output_label.text = ""
+            try:
+                async with httpx.AsyncClient() as client:
+                    r = await client.post(f"{API_BASE}/migrations/upgrade", timeout=130)
+                    data = r.json() if r.status_code == 200 else {}
+                    success = data.get("success", False)
+                    out = (data.get("output") or "").strip()
+                    err = (data.get("error") or "").strip()
+                    output_label.text = out + ("\n" + err if err else "")
+                    if success:
+                        status_label.text = "Migrations completed successfully"
+                        status_label.classes(replace="text-sm mb-2 text-green-600")
+                        ui.notify("Migrations completed", type="positive")
+                        await refresh_status()
+                    else:
+                        status_label.text = "Migrations failed"
+                        status_label.classes(replace="text-sm mb-2 text-red-600")
+                        output_label.classes(replace="text-xs font-mono text-red-600 mb-4 w-full break-all")
+                        ui.notify("Run failed — check output below", type="negative")
+            except Exception as e:
+                status_label.text = f"Error: {e}"
+                output_label.text = str(e)
+                output_label.classes(replace="text-xs font-mono text-red-600 mb-4 w-full break-all")
+                ui.notify(str(e), type="negative")
+
+        with ui.row().classes("gap-2"):
+            ui.button("Refresh status", on_click=refresh_status).props("outline")
+            ui.button("Run pending migrations", on_click=run_upgrade).props("color=primary")

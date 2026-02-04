@@ -176,6 +176,18 @@ class ScanPage:
                     if self._action_mode_row:
                         self._update_action_mode_buttons()
                     ui.notify("Device registered", type="positive")
+                elif r.status_code == 503:
+                    try:
+                        detail = r.json().get("detail", "") if r.text else ""
+                        if "tenant" in detail.lower():
+                            ui.notify(
+                                "Server setup incomplete (no tenant). Ask an admin to run database migrations.",
+                                type="negative",
+                            )
+                        else:
+                            ui.notify(detail or "Service unavailable", type="negative")
+                    except Exception:
+                        ui.notify("Service unavailable. Ask an admin to run database migrations.", type="negative")
                 else:
                     ui.notify(f"Registration failed: {r.text}", type="error")
         except Exception as e:

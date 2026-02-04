@@ -16,8 +16,15 @@ scp -r app/* "${REMOTE_HOST}:${REMOTE_PATH}/app/"
 Write-Host "Syncing migrations..." -ForegroundColor Yellow
 scp -r migrations/* "${REMOTE_HOST}:${REMOTE_PATH}/migrations/"
 
+# Alembic config (required for Settings -> Database migrations)
+scp alembic.ini "${REMOTE_HOST}:${REMOTE_PATH}/"
+
 # Sync requirements if changed
 scp requirements.txt "${REMOTE_HOST}:${REMOTE_PATH}/"
+
+# Install/update Python dependencies in venv (ensures new deps like python-jose are present)
+Write-Host "Installing dependencies on server..." -ForegroundColor Yellow
+ssh $REMOTE_HOST "cd $REMOTE_PATH && ./venv/bin/pip install -q -r requirements.txt"
 
 # Restart service
 Write-Host "Restarting service..." -ForegroundColor Yellow
