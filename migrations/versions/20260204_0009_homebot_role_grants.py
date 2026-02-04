@@ -1,15 +1,15 @@
 """Ensure app_user has privileges on homebot tables.
 
-Revision ID: 0009
-Revises: 0008
+Revision ID: 0012
+Revises: 0011
 Create Date: 2026-02-04
 """
 from typing import Sequence, Union
 
 from alembic import op
 
-revision: str = "0009"
-down_revision: Union[str, None] = "0008"
+revision: str = "0012"
+down_revision: Union[str, None] = "0011"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
