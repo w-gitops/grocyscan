@@ -9,6 +9,15 @@ from app.services.lookup.base import LookupResult
 from app.services.lookup.openfoodfacts import OpenFoodFactsProvider
 
 
+def _make_response(mock_response: dict, status_code: int = 200):
+    """Build a sync response mock so .json() returns the dict, not a coroutine."""
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.json.return_value = mock_response
+    resp.raise_for_status = MagicMock()
+    return resp
+
+
 class TestOpenFoodFactsProvider:
     """Tests for OpenFoodFacts provider."""
 
@@ -29,9 +38,7 @@ class TestOpenFoodFactsProvider:
             "app.services.lookup.openfoodfacts._get_settings",
             lambda: SimpleNamespace(openfoodfacts_enabled=False, timeout_seconds=1),
         )
-
         result = await provider.lookup("1234567890123")
-
         assert result.found is False
         assert result.provider == "openfoodfacts"
 
@@ -53,19 +60,13 @@ class TestOpenFoodFactsProvider:
                 "image_url": "https://example.com/image.jpg",
             },
         }
-
-        response = MagicMock()
-        response.status_code = 200
-        response.json.return_value = mock_response
-        response.raise_for_status = MagicMock()
-
+        response = _make_response(mock_response)
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = response
             result = await provider.lookup("1234567890123")
-
-            assert result.found is True
-            assert "Test Product" in result.name
-            assert result.brand == "Test Brand"
+        assert result.found is True
+        assert "Test Product" in result.name
+        assert result.brand == "Test Brand"
 
     @pytest.mark.asyncio
     async def test_lookup_product_not_found(
@@ -77,17 +78,11 @@ class TestOpenFoodFactsProvider:
             lambda: SimpleNamespace(openfoodfacts_enabled=True, timeout_seconds=1),
         )
         mock_response = {"status": 0}
-
-        response = MagicMock()
-        response.status_code = 200
-        response.json.return_value = mock_response
-        response.raise_for_status = MagicMock()
-
+        response = _make_response(mock_response)
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = response
             result = await provider.lookup("0000000000000")
-
-            assert result.found is False
+        assert result.found is False
 
 
 class TestLookupResult:

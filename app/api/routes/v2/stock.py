@@ -1,17 +1,61 @@
-"""Stock API v2 (Phase 2): add, consume, transfer."""
+"""Stock API v2 (Phase 2): list, add, consume, transfer."""
 
 import uuid
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps_v2 import get_current_user_v2, get_db_homebot, get_tenant_id_v2
-from app.db.homebot_models import HomebotStock, HomebotStockTransaction
-from app.schemas.v2.stock import StockAddRequest, StockConsumeRequest, StockResponse, StockTransferRequest
+from app.db.homebot_models import HomebotLocation, HomebotProduct, HomebotStock, HomebotStockTransaction
+from app.schemas.v2.stock import (
+    StockAddRequest,
+    StockConsumeRequest,
+    StockEntryResponse,
+    StockResponse,
+    StockTransferRequest,
+)
 
 router = APIRouter()
+
+
+@router.get("", response_model=list[StockEntryResponse])
+async def list_stock(
+    product_id: UUID | None = Query(None, description="Filter by product"),
+    location_id: UUID | None = Query(None, description="Filter by location"),
+    tenant_id: uuid.UUID = Depends(get_tenant_id_v2),
+    db: AsyncSession = Depends(get_db_homebot),
+    _user: str = Depends(get_current_user_v2),
+) -> list[StockEntryResponse]:
+    """List stock entries (inventory overview). Optionally filter by product_id or location_id."""
+    stmt = (
+        select(HomebotStock, HomebotProduct.name, HomebotLocation.name)
+        .join(HomebotProduct, HomebotStock.product_id == HomebotProduct.id)
+        .outerjoin(HomebotLocation, HomebotStock.location_id == HomebotLocation.id)
+        .where(HomebotProduct.deleted_at.is_(None))
+    )
+    if product_id is not None:
+        stmt = stmt.where(HomebotStock.product_id == product_id)
+    if location_id is not None:
+        stmt = stmt.where(HomebotStock.location_id == location_id)
+    stmt = stmt.order_by(HomebotProduct.name, HomebotLocation.name.asc().nulls_last())
+    result = await db.execute(stmt)
+    rows = result.all()
+    return [
+        StockEntryResponse(
+            id=row[0].id,
+            product_id=row[0].product_id,
+            product_name=row[1],
+            location_id=row[0].location_id,
+            location_name=row[2],
+            quantity=row[0].quantity,
+            expiration_date=row[0].expiration_date,
+            created_at=row[0].created_at,
+            updated_at=row[0].updated_at,
+        )
+        for row in rows
+    ]
 
 
 @router.post("/add", response_model=StockResponse)

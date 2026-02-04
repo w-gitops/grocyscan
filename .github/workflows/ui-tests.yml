@@ -20,12 +20,79 @@ jobs:
     name: Playwright UI
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: grocyscan
+          POSTGRES_PASSWORD: grocyscan
+          POSTGRES_DB: homebot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U grocyscan"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DATABASE_URL: postgresql+asyncpg://grocyscan:grocyscan@localhost:5432/homebot
+      REDIS_URL: redis://localhost:6379/0
+      AUTH_USERNAME: admin
     defaults:
       run:
         working-directory: frontend
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v2
+        with:
+          enable-cache: false
+
+      - name: Install backend dependencies
+        run: uv pip install --system -r requirements.txt -r requirements-dev.txt
+        working-directory: .
+
+      - name: Set E2E auth password hash
+        run: |
+          HASH=$(python -c "from app.services.auth import hash_password; print(hash_password('test'))")
+          echo "AUTH_PASSWORD_HASH=$HASH" >> $GITHUB_ENV
+        working-directory: .
+
+      - name: Run migrations
+        run: python -m alembic upgrade head
+        working-directory: .
+
+      - name: Start backend
+        run: python -m uvicorn app.main:app --host 0.0.0.0 --port 3334 &
+        working-directory: .
+
+      - name: Wait for backend
+        run: |
+          for i in $(seq 1 30); do
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:3334/health | grep -q 200; then
+              echo "Backend ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Backend did not become ready"
+          exit 1
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -40,19 +107,10 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
-      - name: Deploy preview to Vercel
-        if: ${{ secrets.VERCEL_TOKEN != '' && secrets.VERCEL_ORG_ID != '' && secrets.VERCEL_PROJECT_ID != '' }}
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: |
-          npx vercel pull --yes --environment=preview --token "$VERCEL_TOKEN"
-          DEPLOY_URL=$(npx vercel deploy --token "$VERCEL_TOKEN" --yes | awk 'END{print $0}')
-          echo "PLAYWRIGHT_BASE_URL=$DEPLOY_URL" >> "$GITHUB_ENV"
-
       - name: Run Playwright tests
-        run: npm run test:e2e
+        run: |
+          set -o pipefail
+          npm run test:e2e 2>&1 | tee e2e-run.log
 
       - name: Upload Playwright report
         if: always()
@@ -60,3 +118,10 @@ jobs:
         with:
           name: playwright-report
           path: frontend/playwright-report/
+
+      - name: Upload E2E run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-run-log
+          path: frontend/e2e-run.log

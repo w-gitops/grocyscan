@@ -410,8 +410,8 @@ async def test_lookup_provider(provider: str) -> ProviderTestResponse:
     Returns:
         ProviderTestResponse: Test result
     """
-    # Test barcode - Nutella (well-known product)
-    test_barcode = "3017620422003"
+    # Test barcode - Coca-Cola Classic (widely available in most databases)
+    test_barcode = "049000042566"
     
     try:
         # Import provider classes directly to test them independently
@@ -451,7 +451,8 @@ async def test_lookup_provider(provider: str) -> ProviderTestResponse:
         if hasattr(provider_instance, 'get_api_key'):
             api_key = provider_instance.get_api_key()
             # For providers that need keys, check if set
-            if provider_lower in ['goupc', 'upcitemdb', 'brave'] and not api_key:
+            # Note: upcitemdb works without key (free tier, 100 req/day)
+            if provider_lower in ['goupc', 'brave'] and not api_key:
                 return ProviderTestResponse(
                     success=False,
                     provider=provider,

@@ -1,7 +1,7 @@
 """Homebot multi-tenant extras: roles, qr namespaces, service tokens.
 
-Revision ID: 0008
-Revises: 0007
+Revision ID: 0011
+Revises: 0010
 Create Date: 2026-02-04
 """
 from typing import Sequence, Union
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0008"
-down_revision: Union[str, None] = "0007"
+revision: str = "0011"
+down_revision: Union[str, None] = "0010"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

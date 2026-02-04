@@ -45,3 +45,17 @@ class StockResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class StockEntryResponse(BaseModel):
+    """Stock list entry with product and location names (inventory overview)."""
+
+    id: UUID
+    product_id: UUID
+    product_name: str
+    location_id: UUID | None
+    location_name: str | None
+    quantity: int
+    expiration_date: date | None
+    created_at: datetime
+    updated_at: datetime

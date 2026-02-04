@@ -271,7 +271,11 @@ async def confirm_scan(scan_id: str, confirm: ScanConfirmRequest) -> ScanConfirm
                     )
                 except GrocyError as e:
                     # Some Grocy versions reject userfields in POST; retry without
-                    if userfields and "userfield" in str(e).lower():
+                    # Check both message and details for userfield-related errors
+                    error_str = str(e).lower()
+                    if hasattr(e, 'details') and e.details:
+                        error_str += " " + str(e.details).lower()
+                    if userfields and "userfield" in error_str:
                         logger.warning("Grocy rejected userfields, creating product without Brand userfield")
                         created = await grocy_client.create_product(
                             name=name_for_grocy,

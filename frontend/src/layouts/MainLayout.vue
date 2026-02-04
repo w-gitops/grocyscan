@@ -7,6 +7,7 @@
         <!-- Desktop nav -->
         <q-btn flat label="Scan" to="/scan" class="gt-sm" />
         <q-btn flat label="Products" to="/products" class="gt-sm" />
+        <q-btn flat label="Inventory" to="/inventory" class="gt-sm" />
         <q-btn flat label="Locations" to="/locations" class="gt-sm" />
         <q-btn flat label="Jobs" to="/jobs" class="gt-sm" />
         <q-btn flat label="Logs" to="/logs" class="gt-sm" />
@@ -25,6 +26,10 @@
         <q-item clickable v-close-popup to="/products">
           <q-item-section avatar><q-icon name="inventory_2" /></q-item-section>
           <q-item-section>Products</q-item-section>
+        </q-item>
+        <q-item clickable v-close-popup to="/inventory">
+          <q-item-section avatar><q-icon name="list_alt" /></q-item-section>
+          <q-item-section>Inventory</q-item-section>
         </q-item>
         <q-item clickable v-close-popup to="/locations">
           <q-item-section avatar><q-icon name="location_on" /></q-item-section>

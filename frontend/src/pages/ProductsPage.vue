@@ -36,7 +36,13 @@
           <div class="text-h6">{{ selectedProduct.name }}</div>
           <div class="text-caption text-grey q-mb-sm">{{ selectedProduct.description || '' }}</div>
           <div class="text-caption">Category: {{ selectedProduct.category || '-' }}</div>
-          <div class="text-caption">ID: {{ selectedProduct.id }}</div>
+          <!-- Barcodes -->
+          <div v-if="(selectedProduct.barcodes || []).length" class="q-mt-xs">
+            <div class="text-caption text-weight-medium">Barcodes</div>
+            <q-chip v-for="bc in (selectedProduct.barcodes || [])" :key="bc" dense size="sm" removable @remove="removeBarcode(bc)">
+              {{ bc }}
+            </q-chip>
+          </div>
         </q-card-section>
 
         <!-- Stock by location -->
@@ -57,6 +63,32 @@
           <div class="text-grey">No stock.</div>
         </q-card-section>
 
+        <!-- Add / Consume stock -->
+        <q-card-section class="q-pt-none">
+          <div class="text-subtitle2 q-mb-sm">Adjust stock</div>
+          <div class="row q-col-gutter-sm">
+            <div class="col-6">
+              <q-input v-model.number="stockAddQty" type="number" min="1" dense outlined label="Qty" class="q-mb-sm" />
+              <q-select
+                v-model="stockAddLocationId"
+                :options="locationOptions"
+                label="Location"
+                dense
+                outlined
+                emit-value
+                map-options
+                clearable
+                class="q-mb-sm"
+              />
+              <q-btn label="Add" color="green" size="sm" outline class="full-width" @click="doAddStock" :loading="stockLoading" />
+            </div>
+            <div class="col-6">
+              <q-input v-model.number="stockConsumeQty" type="number" min="1" dense outlined label="Qty" class="q-mb-sm" />
+              <q-btn label="Consume" color="orange" size="sm" outline class="full-width" @click="doConsumeStock" :loading="stockLoading" />
+            </div>
+          </div>
+        </q-card-section>
+
         <q-card-actions align="right">
           <q-btn flat label="Edit" color="primary" @click="openEdit" />
           <q-btn flat label="Close" v-close-popup />
@@ -73,7 +105,17 @@
         <q-card-section>
           <q-input v-model="editForm.name" label="Name" outlined dense class="q-mb-sm" />
           <q-input v-model="editForm.description" label="Description" outlined dense class="q-mb-sm" />
-          <q-input v-model="editForm.category" label="Category" outlined dense />
+          <q-input v-model="editForm.category" label="Category" outlined dense class="q-mb-sm" />
+          <div class="text-caption q-mb-xs">Barcodes</div>
+          <div class="row q-gutter-xs q-mb-sm">
+            <q-chip v-for="bc in (editForm.barcodes || [])" :key="bc" dense size="sm" removable @remove="removeBarcodeInEdit(bc)">
+              {{ bc }}
+            </q-chip>
+          </div>
+          <div class="row q-gutter-sm">
+            <q-input v-model="newBarcode" dense outlined label="Add barcode" class="col" placeholder="Scan or type" @keydown.enter.prevent="addBarcodeInEdit" />
+            <q-btn icon="add" flat round dense color="primary" @click="addBarcodeInEdit" />
+          </div>
         </q-card-section>
         <q-card-actions align="right">
           <q-btn flat label="Cancel" v-close-popup />
@@ -87,7 +129,16 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useDeviceStore } from '../stores/device'
-import { getMeProducts, getMeProductDetail, patchMeProduct } from '../services/api'
+import {
+  getMeProducts,
+  getMeProductDetail,
+  patchMeProduct,
+  addStock,
+  consumeStock,
+  getMeLocations,
+  addMeProductBarcode,
+  removeMeProductBarcode,
+} from '../services/api'
 import { useQuasar } from 'quasar'
 
 const $q = useQuasar()
@@ -99,10 +150,26 @@ const detailDialog = ref(false)
 const selectedProduct = ref(null)
 const detailStock = ref([])
 const editDialog = ref(false)
-const editForm = ref({ name: '', description: '', category: '' })
+const editForm = ref({ name: '', description: '', category: '', barcodes: [] })
 const saving = ref(false)
+const locations = ref([])
+const locationOptions = ref([])
+const stockAddQty = ref(1)
+const stockConsumeQty = ref(1)
+const stockAddLocationId = ref(null)
+const stockLoading = ref(false)
+const newBarcode = ref('')
 
-onMounted(() => loadProducts())
+onMounted(async () => {
+  loadProducts()
+  const fp = await deviceStore.ensureFingerprint()
+  try {
+    locations.value = await getMeLocations(fp)
+    locationOptions.value = locations.value.map(l => ({ label: l.name, value: l.id }))
+  } catch {
+    locationOptions.value = []
+  }
+})
 
 async function loadProducts() {
   const fp = await deviceStore.ensureFingerprint()
@@ -137,7 +204,9 @@ function openEdit() {
     name: selectedProduct.value.name || '',
     description: selectedProduct.value.description || '',
     category: selectedProduct.value.category || '',
+    barcodes: [...(selectedProduct.value.barcodes || [])],
   }
+  newBarcode.value = ''
   editDialog.value = true
 }
 
@@ -146,9 +215,12 @@ async function saveEdit() {
   saving.value = true
   const fp = await deviceStore.ensureFingerprint()
   try {
-    const updated = await patchMeProduct(fp, selectedProduct.value.id, editForm.value)
+    const updated = await patchMeProduct(fp, selectedProduct.value.id, {
+      name: editForm.value.name,
+      description: editForm.value.description,
+      category: editForm.value.category,
+    })
     selectedProduct.value = updated
-    // Update in list
     const idx = products.value.findIndex(p => p.id === updated.id)
     if (idx >= 0) products.value[idx] = updated
     editDialog.value = false
@@ -157,6 +229,80 @@ async function saveEdit() {
     $q.notify({ type: 'negative', message: e.message || 'Failed to save' })
   } finally {
     saving.value = false
+  }
+}
+
+async function doAddStock() {
+  if (!selectedProduct.value || !stockAddQty.value || stockAddQty.value < 1) return
+  stockLoading.value = true
+  const fp = await deviceStore.ensureFingerprint()
+  try {
+    await addStock(fp, selectedProduct.value.id, stockAddQty.value, stockAddLocationId.value || null)
+    $q.notify({ type: 'positive', message: `Added ${stockAddQty.value}` })
+    const data = await getMeProductDetail(fp, selectedProduct.value.id)
+    if (data.product) selectedProduct.value = data.product
+    detailStock.value = data.stock || []
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e.message || 'Add failed' })
+  } finally {
+    stockLoading.value = false
+  }
+}
+
+async function doConsumeStock() {
+  if (!selectedProduct.value || !stockConsumeQty.value || stockConsumeQty.value < 1) return
+  stockLoading.value = true
+  const fp = await deviceStore.ensureFingerprint()
+  try {
+    await consumeStock(fp, selectedProduct.value.id, stockConsumeQty.value, null)
+    $q.notify({ type: 'positive', message: `Consumed ${stockConsumeQty.value}` })
+    const data = await getMeProductDetail(fp, selectedProduct.value.id)
+    if (data.product) selectedProduct.value = data.product
+    detailStock.value = data.stock || []
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e.message || 'Consume failed' })
+  } finally {
+    stockLoading.value = false
+  }
+}
+
+async function removeBarcode(bc) {
+  if (!selectedProduct.value) return
+  const fp = await deviceStore.ensureFingerprint()
+  try {
+    await removeMeProductBarcode(fp, selectedProduct.value.id, bc)
+    selectedProduct.value = { ...selectedProduct.value, barcodes: (selectedProduct.value.barcodes || []).filter(b => b !== bc) }
+    $q.notify({ type: 'positive', message: 'Barcode removed' })
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e.message || 'Failed to remove barcode' })
+  }
+}
+
+async function addBarcodeInEdit() {
+  const bc = (newBarcode.value || '').trim()
+  if (!bc || !selectedProduct.value) return
+  const fp = await deviceStore.ensureFingerprint()
+  try {
+    await addMeProductBarcode(fp, selectedProduct.value.id, bc)
+    editForm.value.barcodes = [...(editForm.value.barcodes || []), bc]
+    selectedProduct.value = { ...selectedProduct.value, barcodes: [...(selectedProduct.value.barcodes || []), bc] }
+    newBarcode.value = ''
+    $q.notify({ type: 'positive', message: 'Barcode added' })
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e.message || 'Failed to add barcode' })
+  }
+}
+
+async function removeBarcodeInEdit(bc) {
+  if (!selectedProduct.value) return
+  const fp = await deviceStore.ensureFingerprint()
+  try {
+    await removeMeProductBarcode(fp, selectedProduct.value.id, bc)
+    editForm.value.barcodes = (editForm.value.barcodes || []).filter(b => b !== bc)
+    selectedProduct.value = { ...selectedProduct.value, barcodes: (selectedProduct.value.barcodes || []).filter(b => b !== bc) }
+    $q.notify({ type: 'positive', message: 'Barcode removed' })
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e.message || 'Failed to remove barcode' })
   }
 }
 </script>
