@@ -17,6 +17,8 @@ from sqlalchemy.pool import StaticPool
 
 TEST_DATABASE_URL = os.environ.get("DATABASE_URL", "")
 USE_POSTGRES = "postgresql" in TEST_DATABASE_URL
+if os.environ.get("CI", "").lower() == "true" and not USE_POSTGRES:
+    raise RuntimeError("CI requires PostgreSQL DATABASE_URL for tests.")
 if not USE_POSTGRES:
     TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 else:
