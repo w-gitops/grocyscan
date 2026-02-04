@@ -1,6 +1,6 @@
 <template>
   <q-page class="q-pa-md">
-    <div class="text-h5 q-mb-md">Scan</div>
+    <h1 class="text-h5 q-mb-md">Scan</h1>
 
     <!-- Device registration prompt -->
     <q-banner v-if="showDevicePrompt" class="bg-primary text-white rounded-borders q-mb-md">
