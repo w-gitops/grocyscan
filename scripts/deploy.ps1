@@ -5,6 +5,7 @@
 
 $REMOTE_HOST = "root@192.168.200.37"
 $REMOTE_PATH = "/opt/grocyscan"
+$LOCAL_ENV_FILE = ".env"
 
 Write-Host "Deploying GrocyScan to $REMOTE_HOST..." -ForegroundColor Cyan
 
@@ -35,6 +36,14 @@ scp alembic.ini "${REMOTE_HOST}:${REMOTE_PATH}/"
 
 # Sync requirements if changed
 scp requirements.txt "${REMOTE_HOST}:${REMOTE_PATH}/"
+
+# Sync environment file (if present)
+if (Test-Path $LOCAL_ENV_FILE) {
+    Write-Host "Syncing environment file..." -ForegroundColor Yellow
+    scp $LOCAL_ENV_FILE "${REMOTE_HOST}:${REMOTE_PATH}/.env"
+} else {
+    Write-Host "No .env found; skipping env sync." -ForegroundColor DarkYellow
+}
 
 # Sync Vue frontend build (served at /app)
 if (Test-Path "frontend\dist") {
