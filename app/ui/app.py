@@ -91,6 +91,6 @@ def configure_nicegui() -> None:
         """Settings page."""
         if not _require_auth(request):
             return
-        await ui_settings.render()
+        await ui_settings.render(request)
 
     logger.info("NiceGUI routes configured")
