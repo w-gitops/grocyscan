@@ -14,7 +14,11 @@ async def _connect():
     except ImportError:  # pragma: no cover - optional dependency
         pytest.skip("asyncpg not installed")
     url = DATABASE_URL.replace("+asyncpg", "").replace("postgresql+asyncpg", "postgresql")
-    return await asyncpg.connect(url)
+    conn = await asyncpg.connect(url)
+    # Ensure RLS is enforced by using the app_user role.
+    await conn.execute("SET ROLE app_user")
+    await conn.execute("SET row_security = on")
+    return conn
 
 
 async def _set_tenant(conn, tenant_id: uuid.UUID) -> None:
