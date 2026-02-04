@@ -1,5 +1,6 @@
 """Phase 4 test fixtures."""
 
+import os
 from collections.abc import AsyncGenerator
 from unittest.mock import patch
 
@@ -8,6 +9,10 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
+
+# Skip tests that require DB when PostgreSQL with homebot schema is not configured (e.g. CI without DATABASE_URL)
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+SKIP_DB = "postgresql" not in DATABASE_URL or "homebot" not in DATABASE_URL
 
 
 @pytest_asyncio.fixture

@@ -5,6 +5,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.main import app
 from app.services.qr import generate_token, validate_checksum
+from tests.phase4.conftest import SKIP_DB
 
 
 def test_crockford_token_format() -> None:
@@ -43,6 +44,7 @@ async def test_create_qr_token_requires_auth() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(SKIP_DB, reason="Requires PostgreSQL with homebot schema")
 async def test_create_qr_token_success(
     client: AsyncClient,
     auth_headers: dict[str, str],
@@ -63,6 +65,7 @@ async def test_create_qr_token_success(
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(SKIP_DB, reason="Requires PostgreSQL with homebot schema")
 async def test_qr_redirect_unassigned(
     client: AsyncClient,
     auth_headers: dict[str, str],

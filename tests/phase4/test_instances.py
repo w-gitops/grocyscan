@@ -6,6 +6,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
+from tests.phase4.conftest import SKIP_DB
 
 
 @pytest.mark.asyncio
@@ -23,6 +24,7 @@ async def test_create_instance_requires_auth() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(SKIP_DB, reason="Requires PostgreSQL with homebot schema")
 async def test_consume_decrements_remaining(
     client: AsyncClient,
     auth_headers: dict[str, str],

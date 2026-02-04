@@ -4,9 +4,11 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
+from tests.phase4.conftest import SKIP_DB
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(SKIP_DB, reason="Requires PostgreSQL with homebot schema")
 async def test_preview_returns_png(
     client: AsyncClient,
     auth_headers: dict[str, str],
@@ -25,6 +27,7 @@ async def test_preview_returns_png(
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(SKIP_DB, reason="Requires PostgreSQL with homebot schema")
 async def test_print_accepts_and_returns_job_id(
     client: AsyncClient,
     auth_headers: dict[str, str],
@@ -44,6 +47,7 @@ async def test_print_accepts_and_returns_job_id(
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(SKIP_DB, reason="Requires PostgreSQL with homebot schema")
 async def test_create_label_template(
     client: AsyncClient,
     auth_headers: dict[str, str],

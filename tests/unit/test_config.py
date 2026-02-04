@@ -16,7 +16,7 @@ def _pyproject_version() -> str:
 
 
 def test_default_settings() -> None:
-    """Test default settings values."""
+    """Test default settings values (version from pyproject.toml)."""
     settings = Settings()
     assert settings.grocyscan_version == _pyproject_version()
     assert settings.grocyscan_env == "development"
