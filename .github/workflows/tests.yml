@@ -25,7 +25,7 @@ jobs:
         env:
           POSTGRES_USER: grocyscan
           POSTGRES_PASSWORD: grocyscan
-          POSTGRES_DB: grocyscan_test
+          POSTGRES_DB: homebot
         ports:
           - 5432:5432
         options: >-
@@ -34,7 +34,7 @@ jobs:
           --health-timeout=5s
           --health-retries=10
     env:
-      DATABASE_URL: postgresql+asyncpg://grocyscan:grocyscan@localhost:5432/grocyscan_test
+      DATABASE_URL: postgresql+asyncpg://grocyscan:grocyscan@localhost:5432/homebot
     steps:
       - name: Checkout
         uses: actions/checkout@v4
