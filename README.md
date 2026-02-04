@@ -150,8 +150,18 @@ grocyscan/
 ## Testing
 
 ```bash
-# Run all tests
-pytest
+# Tests require PostgreSQL (DATABASE_URL).
+# Start a local test DB:
+docker compose -f docker/docker-compose.test.yml up -d
+
+# Run all tests (explicit URL)
+DATABASE_URL=postgresql+asyncpg://grocyscan:grocyscan@localhost:5432/grocyscan_test \
+  python -m pytest tests/ -v --tb=short
+
+# Makefile helpers
+make test-db-up
+make test
+make test-db-down
 
 # Run with coverage
 pytest --cov=app --cov-report=html

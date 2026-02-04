@@ -22,19 +22,28 @@ class TestOpenFoodFactsProvider:
         assert provider.name == "openfoodfacts"
 
     @pytest.mark.asyncio
-    async def test_lookup_disabled(self) -> None:
+    async def test_lookup_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test lookup when provider is disabled."""
         provider = OpenFoodFactsProvider()
-        settings = SimpleNamespace(openfoodfacts_enabled=False, timeout_seconds=10)
-        with patch("app.services.lookup.openfoodfacts._get_settings", return_value=settings):
-            result = await provider.lookup("1234567890123")
+        monkeypatch.setattr(
+            "app.services.lookup.openfoodfacts._get_settings",
+            lambda: SimpleNamespace(openfoodfacts_enabled=False, timeout_seconds=1),
+        )
+
+        result = await provider.lookup("1234567890123")
 
         assert result.found is False
         assert result.provider == "openfoodfacts"
 
     @pytest.mark.asyncio
-    async def test_lookup_product_found(self, provider: OpenFoodFactsProvider) -> None:
+    async def test_lookup_product_found(
+        self, provider: OpenFoodFactsProvider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test successful product lookup."""
+        monkeypatch.setattr(
+            "app.services.lookup.openfoodfacts._get_settings",
+            lambda: SimpleNamespace(openfoodfacts_enabled=True, timeout_seconds=1),
+        )
         mock_response = {
             "status": 1,
             "product": {
@@ -45,16 +54,12 @@ class TestOpenFoodFactsProvider:
             },
         }
 
-        settings = SimpleNamespace(openfoodfacts_enabled=True, timeout_seconds=10)
         response = MagicMock()
         response.status_code = 200
         response.json.return_value = mock_response
-        response.raise_for_status = lambda: None
+        response.raise_for_status = MagicMock()
 
-        with (
-            patch("app.services.lookup.openfoodfacts._get_settings", return_value=settings),
-            patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
-        ):
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = response
             result = await provider.lookup("1234567890123")
 
@@ -63,20 +68,22 @@ class TestOpenFoodFactsProvider:
             assert result.brand == "Test Brand"
 
     @pytest.mark.asyncio
-    async def test_lookup_product_not_found(self, provider: OpenFoodFactsProvider) -> None:
+    async def test_lookup_product_not_found(
+        self, provider: OpenFoodFactsProvider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test product not found."""
+        monkeypatch.setattr(
+            "app.services.lookup.openfoodfacts._get_settings",
+            lambda: SimpleNamespace(openfoodfacts_enabled=True, timeout_seconds=1),
+        )
         mock_response = {"status": 0}
 
-        settings = SimpleNamespace(openfoodfacts_enabled=True, timeout_seconds=10)
         response = MagicMock()
         response.status_code = 200
         response.json.return_value = mock_response
-        response.raise_for_status = lambda: None
+        response.raise_for_status = MagicMock()
 
-        with (
-            patch("app.services.lookup.openfoodfacts._get_settings", return_value=settings),
-            patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
-        ):
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = response
             result = await provider.lookup("0000000000000")
 

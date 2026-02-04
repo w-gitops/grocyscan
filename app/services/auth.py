@@ -3,10 +3,9 @@
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any
-
 import bcrypt
-from pydantic import BaseModel
+from jose import JWTError, jwt
+from pydantic import BaseModel, SecretStr
 
 from app.config import settings
 from app.core.exceptions import AuthenticationError
@@ -165,6 +164,47 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
+def decode_jwt(token: str) -> dict | None:
+    """Decode and validate JWT; return payload or None."""
+    try:
+        payload = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=["HS256"],
+        )
+        return payload
+    except JWTError:
+        return None
+
+
+def get_auth_password_hash(fallback_hash: str | None = None) -> str:
+    """Get the effective password hash (settings file overrides env)."""
+    try:
+        from app.services.settings import settings_service
+
+        auth_settings = settings_service.get_section("auth")
+        if getattr(auth_settings, "password_hash", ""):
+            return auth_settings.password_hash
+    except Exception:
+        # Fall back to env-based settings
+        pass
+    if fallback_hash is not None:
+        return fallback_hash
+    return settings.auth_password_hash.get_secret_value()
+
+
+def set_auth_password_hash(password_hash: str) -> None:
+    """Persist the password hash and update in-memory settings."""
+    try:
+        from app.services.settings import settings_service
+
+        settings_service.update_section("auth", {"password_hash": password_hash})
+    except Exception as exc:
+        logger.error("Failed to persist auth password hash", error=str(exc))
+        raise RuntimeError("Failed to save password") from exc
+    settings.auth_password_hash = SecretStr(password_hash)
+
+
 def authenticate_user(username: str, password: str) -> Session:
     """Authenticate a user and create a session.
 
@@ -191,7 +231,7 @@ def authenticate_user(username: str, password: str) -> Session:
         raise AuthenticationError("Invalid username or password")
 
     # Verify password
-    stored_hash = settings.auth_password_hash.get_secret_value()
+    stored_hash = get_auth_password_hash()
     if not stored_hash:
         logger.error("No password hash configured")
         raise AuthenticationError("Authentication not configured")

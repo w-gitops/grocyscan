@@ -1,25 +1,24 @@
 """Tests for application configuration."""
 
+import tomllib
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
-
 from app.config import Settings
+
+
+def _pyproject_version() -> str:
+    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    with open(pyproject, "rb") as f:
+        data = tomllib.load(f)
+    return data["project"]["version"]
 
 
 def test_default_settings() -> None:
     """Test default settings values."""
     settings = Settings()
-    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
-    version = None
-    try:
-        import tomllib
-    except ImportError:  # pragma: no cover - Python 3.11+ ships tomllib
-        import tomli as tomllib  # type: ignore
-    with pyproject.open("rb") as f:
-        version = tomllib.load(f)["project"]["version"]
-    assert settings.grocyscan_version == version
+    assert settings.grocyscan_version == _pyproject_version()
     assert settings.grocyscan_env == "development"
     assert settings.grocyscan_port == 3334
 
