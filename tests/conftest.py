@@ -1,6 +1,9 @@
 """Pytest fixtures and configuration."""
 
+import contextlib
 import os
+import tempfile
+import time
 from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
 from typing import Any
@@ -9,9 +12,10 @@ import pytest
 import pytest_asyncio
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -85,11 +89,51 @@ def migrate_database() -> Generator[None, None, None]:
     if not USE_POSTGRES:
         yield
         return
+    worker_id = os.environ.get("PYTEST_XDIST_WORKER")
+
+    @contextlib.contextmanager
+    def _migration_lock() -> Generator[None, None, None]:
+        lock_path = os.path.join(tempfile.gettempdir(), "alembic-migrate.lock")
+        with open(lock_path, "w", encoding="utf-8") as lock_file:
+            import fcntl
+
+            fcntl.flock(lock_file, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file, fcntl.LOCK_UN)
+
+    def _sync_database_url() -> str:
+        return TEST_DATABASE_URL.replace("+asyncpg", "").replace("postgresql+asyncpg", "postgresql")
+
+    def _at_head(config: Config) -> bool:
+        head = ScriptDirectory.from_config(config).get_current_head()
+        if not head:
+            return True
+        try:
+            engine = create_engine(_sync_database_url())
+            with engine.connect() as conn:
+                version = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+            return version == head
+        except Exception:
+            return False
+
     config = Config(str(ROOT_DIR / "alembic.ini"))
     config.set_main_option("sqlalchemy.url", TEST_DATABASE_URL)
-    command.upgrade(config, "head")
+
+    with _migration_lock():
+        if not _at_head(config):
+            command.upgrade(config, "head")
+    # Wait for migrations if another worker applied them
+    deadline = time.time() + 60
+    while not _at_head(config):
+        if time.time() > deadline:
+            raise RuntimeError("Timed out waiting for Alembic migrations")
+        time.sleep(1)
     yield
-    command.downgrade(config, "base")
+    if worker_id is None:
+        with _migration_lock():
+            command.downgrade(config, "base")
 
 
 @pytest_asyncio.fixture(scope="session")
