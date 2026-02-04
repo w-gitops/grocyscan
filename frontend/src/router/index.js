@@ -11,6 +11,7 @@ const routes = [
       { path: '', redirect: '/scan' },
       { path: 'scan', name: 'Scan', component: () => import('../pages/ScanPage.vue') },
       { path: 'products', name: 'Products', component: () => import('../pages/ProductsPage.vue') },
+      { path: 'inventory', name: 'Inventory', component: () => import('../pages/InventoryPage.vue') },
       { path: 'locations', name: 'Locations', component: () => import('../pages/LocationsPage.vue') },
       { path: 'jobs', name: 'Jobs', component: () => import('../pages/JobsPage.vue') },
       { path: 'logs', name: 'Logs', component: () => import('../pages/LogsPage.vue') },

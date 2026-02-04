@@ -128,21 +128,42 @@ export async function getMeProductDetail(deviceId, productId) {
   return res.json()
 }
 
+export async function getMeStock(deviceId, productId = null, locationId = null) {
+  const params = new URLSearchParams()
+  if (productId) params.set('product_id', productId)
+  if (locationId) params.set('location_id', locationId)
+  const qs = params.toString()
+  const url = qs ? `/api/me/stock?${qs}` : '/api/me/stock'
+  const res = await apiFetch(url, { headers: { 'X-Device-ID': deviceId } })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
 export async function addStock(deviceId, productId, quantity = 1, locationId = null) {
+  const body = {
+    product_id: productId != null ? String(productId) : null,
+    quantity,
+    location_id: locationId ?? null,
+  }
   const res = await apiFetch('/api/me/stock/add', {
     method: 'POST',
     headers: { 'X-Device-ID': deviceId },
-    body: JSON.stringify({ product_id: productId, quantity, location_id: locationId }),
+    body: JSON.stringify(body),
   })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
 
 export async function consumeStock(deviceId, productId, quantity = 1, locationId = null) {
+  const body = {
+    product_id: productId != null ? String(productId) : null,
+    quantity,
+    location_id: locationId ?? null,
+  }
   const res = await apiFetch('/api/me/stock/consume', {
     method: 'POST',
     headers: { 'X-Device-ID': deviceId },
-    body: JSON.stringify({ product_id: productId, quantity, location_id: locationId }),
+    body: JSON.stringify(body),
   })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
@@ -156,6 +177,34 @@ export async function patchMeProduct(deviceId, productId, body) {
   })
   if (!res.ok) throw apiErrorFromResponse(res, await res.text())
   return res.json()
+}
+
+export async function createMeProduct(deviceId, data) {
+  const res = await apiFetch('/api/me/products', {
+    method: 'POST',
+    headers: { 'X-Device-ID': deviceId },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw apiErrorFromResponse(res, await res.text())
+  return res.json()
+}
+
+export async function addMeProductBarcode(deviceId, productId, barcode) {
+  const res = await apiFetch(`/api/me/products/${productId}/barcodes`, {
+    method: 'POST',
+    headers: { 'X-Device-ID': deviceId },
+    body: JSON.stringify({ barcode }),
+  })
+  if (!res.ok) throw apiErrorFromResponse(res, await res.text())
+  return res.json()
+}
+
+export async function removeMeProductBarcode(deviceId, productId, barcode) {
+  const res = await apiFetch(
+    `/api/me/products/${productId}/barcodes/${encodeURIComponent(barcode)}`,
+    { method: 'DELETE', headers: { 'X-Device-ID': deviceId } }
+  )
+  if (!res.ok) throw apiErrorFromResponse(res, await res.text())
 }
 
 // Locations (session + device)

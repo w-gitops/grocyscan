@@ -26,6 +26,7 @@ from app.db.homebot_models import (
 from app.schemas.v2.device import DeviceCreate, DeviceResponse, DeviceUpdatePreferences
 from app.schemas.v2.location import LocationResponse
 from app.schemas.v2.product import ProductResponse, ProductUpdate
+from app.schemas.v2.stock import StockEntryResponse
 
 router = APIRouter()
 
@@ -42,6 +43,25 @@ class MeStockAddBody(BaseModel):
     product_id: UUID
     quantity: int = Field(..., gt=0)
     location_id: UUID | None = None
+
+
+class MeProductCreate(BaseModel):
+    """Create product (and optionally add initial stock) for /api/me/products."""
+
+    name: str = Field(..., min_length=1, max_length=500)
+    barcode: str | None = Field(None, max_length=100)
+    description: str | None = None
+    category: str | None = None
+    quantity_unit: str | None = None
+    min_stock_quantity: int = Field(default=0, ge=0)
+    quantity: int = Field(default=0, ge=0, description="Initial stock to add (0 = no stock)")
+    location_id: UUID | None = None
+
+
+class MeBarcodeAdd(BaseModel):
+    """Add barcode to product for /api/me/products/{id}/barcodes."""
+
+    barcode: str = Field(..., min_length=1, max_length=100)
 
 
 class MeStockConsumeBody(BaseModel):
@@ -284,13 +304,93 @@ async def get_product_by_barcode_me(
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
 
 
+@router.post("/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
+async def create_product_me(
+    request: Request,
+    body: MeProductCreate,
+    x_device_id: str | None = Header(None, alias="X-Device-ID"),
+) -> ProductResponse:
+    """Create a product for device tenant. Optionally link barcode and add initial stock (session auth)."""
+    async for session, tenant_id, device in _session_device_context(request, x_device_id):
+        await session.execute(_set_tenant_id_stmt(tenant_id))
+        name_normalized = _normalize_name(body.name) or None
+        product = HomebotProduct(
+            tenant_id=tenant_id,
+            name=body.name,
+            name_normalized=name_normalized,
+            description=body.description,
+            category=body.category,
+            quantity_unit=body.quantity_unit,
+            min_stock_quantity=body.min_stock_quantity,
+            attributes={},
+        )
+        session.add(product)
+        await session.flush()
+        if body.barcode and body.barcode.strip():
+            session.add(
+                HomebotBarcode(
+                    tenant_id=tenant_id,
+                    product_id=product.id,
+                    barcode=body.barcode.strip(),
+                    is_primary=True,
+                )
+            )
+        if body.quantity > 0:
+            location_id = body.location_id or device.default_location_id
+            if location_id:
+                r = await session.execute(
+                    select(HomebotStock).where(
+                        HomebotStock.tenant_id == tenant_id,
+                        HomebotStock.product_id == product.id,
+                        HomebotStock.location_id == location_id,
+                    )
+                )
+                row = r.scalar_one_or_none()
+                if row:
+                    row.quantity += body.quantity
+                    session.add(
+                        HomebotStockTransaction(
+                            tenant_id=tenant_id,
+                            stock_id=row.id,
+                            transaction_type="add",
+                            quantity=body.quantity,
+                            to_location_id=location_id,
+                        )
+                    )
+                else:
+                    row = HomebotStock(
+                        tenant_id=tenant_id,
+                        product_id=product.id,
+                        location_id=location_id,
+                        quantity=body.quantity,
+                    )
+                    session.add(row)
+                    await session.flush()
+                    session.add(
+                        HomebotStockTransaction(
+                            tenant_id=tenant_id,
+                            stock_id=row.id,
+                            transaction_type="add",
+                            quantity=body.quantity,
+                            to_location_id=location_id,
+                        )
+                    )
+        await session.commit()
+        await session.refresh(product)
+        barcodes = [body.barcode.strip()] if body.barcode and body.barcode.strip() else []
+        data = ProductResponse.model_validate(product).model_dump()
+        data["barcodes"] = barcodes
+        return ProductResponse(**data)
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
+
+
 @router.get("/products", response_model=list[ProductResponse])
 async def list_products_me(
     request: Request,
     q: str | None = None,
     x_device_id: str | None = Header(None, alias="X-Device-ID"),
 ) -> list[ProductResponse]:
-    """List homebot products for device tenant (session auth). Optional ?q= search."""
+    """List homebot products for device tenant (session auth). Optional ?q= search. Includes barcodes."""
     async for session, tenant_id, _ in _session_device_context(request, x_device_id):
         await session.execute(_set_tenant_id_stmt(tenant_id))
         stmt = select(HomebotProduct).where(HomebotProduct.deleted_at.is_(None))
@@ -304,7 +404,23 @@ async def list_products_me(
             )
         result = await session.execute(stmt)
         products = result.scalars().unique().all()
-        return [ProductResponse.model_validate(p) for p in products]
+        if not products:
+            return []
+        product_ids = [p.id for p in products]
+        barcode_r = await session.execute(
+            select(HomebotBarcode.product_id, HomebotBarcode.barcode).where(
+                HomebotBarcode.product_id.in_(product_ids)
+            )
+        )
+        barcodes_by_product: dict = {pid: [] for pid in product_ids}
+        for row in barcode_r.all():
+            barcodes_by_product.setdefault(row[0], []).append(row[1])
+        out = []
+        for p in products:
+            data = ProductResponse.model_validate(p).model_dump()
+            data["barcodes"] = barcodes_by_product.get(p.id, [])
+            out.append(ProductResponse(**data))
+        return out
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
 
 
@@ -344,8 +460,13 @@ async def get_product_detail_me(
             }
             for row in stock_r.all()
         ]
+        barcode_r = await session.execute(
+            select(HomebotBarcode.barcode).where(HomebotBarcode.product_id == product_id)
+        )
+        barcodes = [r[0] for r in barcode_r.all()]
+        product_resp = ProductResponse.model_validate(product).model_dump() | {"barcodes": barcodes}
         return {
-            "product": ProductResponse.model_validate(product),
+            "product": ProductResponse(**product_resp),
             "stock": stock_list,
         }
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
@@ -382,7 +503,120 @@ async def update_product_me(
             setattr(product, key, value)
         await session.commit()
         await session.refresh(product)
-        return ProductResponse.model_validate(product)
+        barcode_r = await session.execute(select(HomebotBarcode.barcode).where(HomebotBarcode.product_id == product_id))
+        barcodes = [row[0] for row in barcode_r.all()]
+        resp_data = ProductResponse.model_validate(product).model_dump()
+        resp_data["barcodes"] = barcodes
+        return ProductResponse(**resp_data)
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
+
+
+@router.post("/products/{product_id}/barcodes", status_code=status.HTTP_201_CREATED)
+async def add_product_barcode_me(
+    product_id: UUID,
+    body: MeBarcodeAdd,
+    request: Request,
+    x_device_id: str | None = Header(None, alias="X-Device-ID"),
+) -> dict[str, str]:
+    """Add a barcode to a product (session auth). Fails if barcode already linked to another product."""
+    async for session, tenant_id, _ in _session_device_context(request, x_device_id):
+        await session.execute(_set_tenant_id_stmt(tenant_id))
+        r = await session.execute(
+            select(HomebotProduct).where(
+                HomebotProduct.id == product_id,
+                HomebotProduct.deleted_at.is_(None),
+            )
+        )
+        if not r.scalar_one_or_none():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+        barcode_str = body.barcode.strip()
+        existing = await session.execute(
+            select(HomebotBarcode).where(
+                HomebotBarcode.tenant_id == tenant_id,
+                HomebotBarcode.barcode == barcode_str,
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Barcode already linked to another product",
+            )
+        session.add(
+            HomebotBarcode(
+                tenant_id=tenant_id,
+                product_id=product_id,
+                barcode=barcode_str,
+                is_primary=False,
+            )
+        )
+        await session.commit()
+        return {"status": "ok", "barcode": barcode_str}
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
+
+
+@router.delete("/products/{product_id}/barcodes/{barcode:path}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_product_barcode_me(
+    product_id: UUID,
+    barcode: str,
+    request: Request,
+    x_device_id: str | None = Header(None, alias="X-Device-ID"),
+) -> None:
+    """Remove a barcode from a product (session auth)."""
+    async for session, tenant_id, _ in _session_device_context(request, x_device_id):
+        await session.execute(_set_tenant_id_stmt(tenant_id))
+        result = await session.execute(
+            select(HomebotBarcode).where(
+                HomebotBarcode.tenant_id == tenant_id,
+                HomebotBarcode.product_id == product_id,
+                HomebotBarcode.barcode == barcode.strip(),
+            )
+        )
+        row = result.scalar_one_or_none()
+        if not row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Barcode not found for this product")
+        await session.delete(row)
+        await session.commit()
+        return
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
+
+
+@router.get("/stock", response_model=list[StockEntryResponse])
+async def list_stock_me(
+    request: Request,
+    product_id: UUID | None = None,
+    location_id: UUID | None = None,
+    x_device_id: str | None = Header(None, alias="X-Device-ID"),
+) -> list[StockEntryResponse]:
+    """List stock entries for device tenant (inventory overview). Optional product_id, location_id query params."""
+    async for session, tenant_id, _ in _session_device_context(request, x_device_id):
+        await session.execute(_set_tenant_id_stmt(tenant_id))
+        stmt = (
+            select(HomebotStock, HomebotProduct.name, HomebotLocation.name)
+            .join(HomebotProduct, HomebotStock.product_id == HomebotProduct.id)
+            .outerjoin(HomebotLocation, HomebotStock.location_id == HomebotLocation.id)
+            .where(HomebotProduct.deleted_at.is_(None))
+        )
+        if product_id is not None:
+            stmt = stmt.where(HomebotStock.product_id == product_id)
+        if location_id is not None:
+            stmt = stmt.where(HomebotStock.location_id == location_id)
+        stmt = stmt.order_by(HomebotProduct.name, HomebotLocation.name.asc().nulls_last())
+        result = await session.execute(stmt)
+        rows = result.all()
+        return [
+            StockEntryResponse(
+                id=row[0].id,
+                product_id=row[0].product_id,
+                product_name=row[1],
+                location_id=row[0].location_id,
+                location_name=row[2],
+                quantity=row[0].quantity,
+                expiration_date=row[0].expiration_date,
+                created_at=row[0].created_at,
+                updated_at=row[0].updated_at,
+            )
+            for row in rows
+        ]
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
 
 
