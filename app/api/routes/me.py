@@ -454,9 +454,16 @@ async def get_product_detail_me(
         )
         stock_list = [
             {
+                "id": str(row[0].id),
                 "location_id": str(row[0].location_id) if row[0].location_id else None,
                 "location_name": row[1].name if row[1] else "Unspecified",
                 "quantity": row[0].quantity,
+                "expiration_date": str(row[0].expiration_date) if row[0].expiration_date else None,
+                "stock_id": row[0].stock_id,
+                "price": float(row[0].price) if row[0].price else None,
+                "open": row[0].open,
+                "opened_date": str(row[0].opened_date) if row[0].opened_date else None,
+                "note": row[0].note,
             }
             for row in stock_r.all()
         ]

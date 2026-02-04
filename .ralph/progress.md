@@ -64,8 +64,16 @@ Criteria:
 
 - **frontend/** : Vue 3 + Quasar v2 + Vite, port 3335, proxy to API 3334. Pinia stores (auth, device), Vue Router with auth guard, Login/Scan/Products/Locations/Settings pages. Device fingerprint in services/device.js. Build: `npm run build`; dev: `npm run dev`.
 
+### Phase 3.5: Inventory Parity
+**Status:** In Progress (14/17 criteria complete)
+
+- Migration 0011: quantity_units, product_groups, quantity_unit_conversions, enhanced product fields (QU FKs, best-before settings, advanced fields), stock entry enhancements (decimal qty, stock_id, price, open, note), transaction log enhancements (user_id, product_id, correlation_id, undone).
+- Stock API: inventory correction, open product, edit stock entry, undo operation with correlation_id support.
+- Location UI: Full CRUD with hierarchy display, edit/delete dialogs, reorder via sort_order.
+- Remaining: [11] Freezer auto-adjust, [15-17] Stock entry UI components.
+
 ### Phase 4: Labels & QR
-**Status:** Pending (requires Phase 3)
+**Status:** Pending (requires Phase 3.5)
 
 ### Phase 5: Recipes & Lists
 **Status:** Pending (requires Phase 3)
@@ -97,3 +105,9 @@ Criteria:
 ### 2026-02-03 (browser E2E)
 - Full browser E2E: deploy, login (admin/admin), device registration, scan lookup, SPA /scan, Products page.
 - **Fix:** Device registration failed with `NoReferencedTableError: ... 'homebot.tenants'`. Added minimal `HomebotTenant` ORM model in `app/db/homebot_models.py` so SQLAlchemy can resolve FKs from devices/products/etc. Deployed; registration and scan flow verified.
+
+### 2026-02-04 (Phase 3.5)
+- Migration 0011 created and deployed: quantity_units, product_groups, quantity_unit_conversions tables; product fields (QU FKs, best-before settings, parent, tare, calories, etc.); stock entry enhancements (decimal qty, stock_id, price, open, note); transaction log enhancements (user_id, product_id, correlation_id, undone).
+- Stock API v2: inventory correction, open product, edit stock entry, undo transaction with correlation_id support.
+- Location UI: Enhanced LocationsPage.vue with hierarchy display, edit dialog, delete confirmation, reorder buttons. Added me.py routes for PATCH/DELETE.
+- Phase 3.5 tests: test_stock_operations.py - 6 schema validation tests passing.

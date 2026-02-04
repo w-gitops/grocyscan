@@ -38,9 +38,9 @@ Full Grocy inventory parity - quantity units, stock operations, location UI, und
 
 ### Stock Entry UI (Vue/Quasar)
 
-- [ ] **[15]** View stock entries for product
-- [ ] **[16]** Move stock dialog
-- [ ] **[17]** Inventory correction dialog
+- [x] **[15]** View stock entries for product
+- [x] **[16]** Move stock dialog
+- [x] **[17]** Inventory correction dialog
 
 ---
 
