@@ -61,7 +61,6 @@ class TestOpenFoodFactsProvider:
 
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = response
-
             result = await provider.lookup("1234567890123")
 
             assert result.found is True
@@ -86,7 +85,6 @@ class TestOpenFoodFactsProvider:
 
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = response
-
             result = await provider.lookup("0000000000000")
 
             assert result.found is False

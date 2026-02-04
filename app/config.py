@@ -3,6 +3,7 @@
 import tomllib
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -119,6 +120,20 @@ class Settings(BaseSettings):
     auth_password_hash: SecretStr = SecretStr("")
     session_timeout_hours: int = 24
     session_absolute_timeout_days: int = 7
+    session_cookie_name: str = Field(
+        default="session_id",
+        description="Cookie name for browser sessions",
+    )
+    session_cookie_domain: str = Field(
+        default="",
+        description="Cookie domain for browser sessions (e.g. homebot.ssiops.com)",
+    )
+    session_cookie_samesite: Literal["lax", "strict", "none"] = "strict"
+    session_cookie_secure: bool | None = Field(
+        default=None,
+        description="Override Secure flag for session cookie (defaults to true in production)",
+    )
+    session_cookie_httponly: bool = True
 
     # Homebot Phase 1: JWT and API key (comma-separated list of valid API keys)
     secret_key: str = Field(
@@ -163,6 +178,34 @@ class Settings(BaseSettings):
                 raise ValueError(f"Invalid provider: {provider}")
         return ",".join(providers)
 
+    @field_validator("session_cookie_name", mode="before")
+    @classmethod
+    def normalize_cookie_name(cls, v: str) -> str:
+        value = (v or "").strip()
+        if not value:
+            raise ValueError("session_cookie_name cannot be empty")
+        return value
+
+    @field_validator("session_cookie_domain", mode="before")
+    @classmethod
+    def normalize_cookie_domain(cls, v: str) -> str:
+        if not v:
+            return ""
+        if isinstance(v, str):
+            value = v.strip()
+            if value.startswith(("http://", "https://")):
+                parsed = urlparse(value)
+                return parsed.hostname or ""
+            return value
+        return v
+
+    @field_validator("session_cookie_samesite", mode="before")
+    @classmethod
+    def normalize_cookie_samesite(cls, v: str) -> str:
+        if isinstance(v, str):
+            return v.lower()
+        return v
+
     @property
     def provider_list(self) -> list[str]:
         """Get lookup providers as a list."""
@@ -177,6 +220,19 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         """Check if running in production mode."""
         return self.grocyscan_env == "production"
+
+    @property
+    def session_cookie_domain_resolved(self) -> str | None:
+        """Resolved session cookie domain or None when unset."""
+        value = self.session_cookie_domain.strip()
+        return value or None
+
+    @property
+    def session_cookie_secure_resolved(self) -> bool:
+        """Resolved Secure flag for session cookies."""
+        if self.session_cookie_secure is None:
+            return self.is_production
+        return self.session_cookie_secure
 
     @property
     def api_key_list(self) -> list[str]:
