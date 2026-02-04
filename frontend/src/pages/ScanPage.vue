@@ -278,16 +278,42 @@ async function startCamera() {
     await nextTick()
     
     html5QrCode = new Html5Qrcode('scanner-container')
-    await html5QrCode.start(
-      { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 250, height: 150 } },
-      onCameraScan,
-      () => {} // ignore errors during scanning
-    )
+    
+    // Try back camera first, then fall back to any camera
+    try {
+      await html5QrCode.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 250, height: 150 } },
+        onCameraScan,
+        () => {} // ignore errors during scanning
+      )
+    } catch (backCamError) {
+      console.warn('Back camera failed, trying any camera:', backCamError)
+      // Try any available camera
+      await html5QrCode.start(
+        { facingMode: 'user' },
+        { fps: 10, qrbox: { width: 250, height: 150 } },
+        onCameraScan,
+        () => {}
+      )
+    }
   } catch (e) {
     cameraActive.value = false
     console.error('Camera error:', e)
-    $q.notify({ type: 'negative', message: 'Camera access denied or not available. HTTPS required.' })
+    
+    // Provide specific error messages
+    let msg = 'Camera not available.'
+    if (e.name === 'NotAllowedError' || e.message?.includes('denied') || e.message?.includes('Permission')) {
+      msg = 'Camera permission denied. Please allow camera access in your browser settings and reload the page.'
+    } else if (e.name === 'NotFoundError' || e.message?.includes('not found')) {
+      msg = 'No camera found on this device.'
+    } else if (e.name === 'NotReadableError' || e.message?.includes('in use')) {
+      msg = 'Camera is in use by another application.'
+    } else if (!window.isSecureContext) {
+      msg = 'Camera requires HTTPS. Please access this page via https://.'
+    }
+    
+    $q.notify({ type: 'negative', message: msg, timeout: 5000 })
   }
 }
 
