@@ -2,10 +2,11 @@ name: Tests
 
 on:
   pull_request:
-    branches:
-      - dev
-      - main
-  push:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
     branches:
       - dev
       - main
@@ -16,6 +17,7 @@ permissions:
 jobs:
   pytest:
     name: Pytest (Postgres)
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     services:
       postgres:
