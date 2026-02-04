@@ -28,9 +28,9 @@ def configure_nicegui() -> None:
         await login.render()
 
     @ui.page("/scan")
-    async def scan_page() -> None:
+    async def scan_page(request: Request) -> None:
         """Main scanning page."""
-        await scan.render()
+        await scan.render(request)
 
     @ui.page("/products")
     async def products_page() -> None:

@@ -27,8 +27,8 @@ Device registration, preferences, and UI (Vue/Quasar or NiceGUI validation).
 ### Scanning Interface
 
 - [ ] **[7]** Camera barcode scanner works
-- [ ] **[8]** Action mode selection
-- [ ] **[9]** Quick actions after scan
+- [x] **[8]** Action mode selection
+- [x] **[9]** Quick actions after scan
 
 ### Product Views
 

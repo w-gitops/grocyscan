@@ -43,9 +43,10 @@ Criteria:
 - RLS and tenant context via X-Tenant-ID and get_db_homebot.
 
 ### Phase 3: Device & UI
-**Status:** In progress (device backend done)
+**Status:** In progress (device backend + NiceGUI scan UI)
 
-- Migration 0006: homebot.devices. v2 API: POST /api/v2/devices, GET/PATCH /api/v2/devices/me (X-Device-ID). Criteria 4,5,6 done. Frontend (1,2,3) and scanning (7–12) pending (Option A: NiceGUI validation; Option B: Vue/Quasar).
+- Migration 0006: homebot.devices. v2 API: POST /api/v2/devices, GET/PATCH /api/v2/devices/me (X-Device-ID). Criteria 4,5,6 done.
+- Option A (NiceGUI): /api/me router mounted. Device registration prompt on scan page (GET /api/me/device → 404 shows dialog, POST register). Action mode row (Add Stock | Consume | Transfer) with PATCH default_action. Quick actions: after scan, GET /api/me/product-by-barcode; if in homebot show +1/-1 calling /api/me/stock/add and /api/me/stock/consume. Criteria 8, 9 done. Frontend scaffold (1,2,3), camera (7), product views (10,11), PWA (12) pending.
 
 ### Phase 4: Labels & QR
 **Status:** Pending (requires Phase 3)

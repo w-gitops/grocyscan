@@ -1,8 +1,10 @@
 """Scan page UI - main barcode scanning interface."""
 
+import hashlib
 from typing import Any
 
 import httpx
+from fastapi import Request
 from nicegui import app, ui
 
 from app.config import settings
@@ -18,6 +20,24 @@ from app.ui.components import (
 RECENT_SCANS_STORAGE_KEY = "recent_scans"
 RECENT_SCANS_MAX = 10
 RECENT_SCANS_DISPLAY = 5
+DEVICE_FINGERPRINT_KEY = "device_fingerprint"
+API_COOKIE_KEY = "api_cookie"
+ACTION_MODES = ("add", "consume", "transfer")
+BASE_URL = None  # Set from settings at runtime
+
+
+def _base_url() -> str:
+    return f"http://127.0.0.1:{settings.grocyscan_port}"
+
+
+def _device_headers() -> dict[str, str]:
+    """Headers for /api/me requests: cookie and X-Device-ID from storage."""
+    fp = app.storage.user.get(DEVICE_FINGERPRINT_KEY) or ""
+    cookie = app.storage.user.get(API_COOKIE_KEY) or ""
+    h = {"X-Device-ID": fp}
+    if cookie:
+        h["Cookie"] = cookie
+    return h
 
 
 def _recent_scans_from_storage() -> list[dict[str, Any]]:
@@ -58,11 +78,214 @@ class ScanPage:
         self._mode_container: ui.column | None = None
         self._search_sub_container: ui.column | None = None
         self._product_search: ProductSearch | None = None
+        # Phase 3: device and action mode
+        self._device: dict[str, Any] | None = None
+        self._device_dialog: ui.dialog | None = None
+        self._action_mode: str = "add"
+        self._action_mode_row: ui.row | None = None
+        self._quick_action_container: ui.column | None = None  # +1/-1 after scan
+        self._last_scanned_barcode: str | None = None
+        self._last_scanned_product_id: str | None = None
+        self._last_scanned_name: str | None = None
+
+    def _ensure_fingerprint(self, request: Request) -> str:
+        """Generate or load device fingerprint; store in user storage. Return fingerprint."""
+        fp = app.storage.user.get(DEVICE_FINGERPRINT_KEY)
+        if fp:
+            return fp
+        raw = (
+            (request.headers.get("user-agent") or "")
+            + (request.headers.get("accept-language") or "")
+            + str(getattr(request.client, "host", ""))
+        )
+        fp = hashlib.sha256(raw.encode()).hexdigest()[:32]
+        app.storage.user[DEVICE_FINGERPRINT_KEY] = fp
+        return fp
+
+    def _save_api_cookie(self, request: Request) -> None:
+        """Store request cookie for later /api/me calls from callbacks."""
+        app.storage.user[API_COOKIE_KEY] = request.headers.get("cookie", "")
+
+    async def _check_device_and_show_register_if_needed(self, request: Request) -> None:
+        """Ensure fingerprint and cookie; GET /api/me/device. If 404, show registration dialog."""
+        self._ensure_fingerprint(request)
+        self._save_api_cookie(request)
+        base = _base_url()
+        headers = _device_headers()
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.get(f"{base}/api/me/device", headers=headers)
+                if r.status_code == 200:
+                    self._device = r.json()
+                    raw = (self._device.get("default_action") or "add").lower()
+                    self._action_mode = "add" if raw == "add_stock" else (raw if raw in ACTION_MODES else "add")
+                    if self._action_mode_row:
+                        self._update_action_mode_buttons()
+                    return
+                if r.status_code == 404:
+                    self._show_device_registration_dialog()
+                    return
+        except Exception:
+            pass
+        # No device and no 404 (e.g. not logged in): don't block scan page
+
+    def _show_device_registration_dialog(self) -> None:
+        """Open dialog to register this device (name, device_type)."""
+        with ui.dialog() as self._device_dialog, ui.card().classes("w-full max-w-sm"):
+            ui.label("Register this device").classes("text-xl font-bold mb-4")
+            name_input = ui.input("Device name", value="My tablet").classes("w-full")
+            device_type_select = ui.select(
+                {"tablet": "Tablet", "phone": "Phone", "desktop": "Desktop"},
+                value="tablet",
+                label="Device type",
+            ).classes("w-full")
+            with ui.row().classes("w-full justify-end gap-2 mt-4"):
+                ui.button("Register", on_click=self._on_register_device).props("color=primary")
+            # Store refs for callback
+            self._device_dialog._name_input = name_input
+            self._device_dialog._device_type_select = device_type_select
+        self._device_dialog.open()
+
+    async def _on_register_device(self) -> None:
+        """POST /api/me/device and close dialog."""
+        if not self._device_dialog:
+            return
+        name = getattr(self._device_dialog, "_name_input", None)
+        device_type_el = getattr(self._device_dialog, "_device_type_select", None)
+        name_val = name.value.strip() if name else "Device"
+        device_type_val = device_type_el.value if device_type_el else "tablet"
+        fp = app.storage.user.get(DEVICE_FINGERPRINT_KEY) or ""
+        if not fp:
+            ui.notify("Cannot register: no fingerprint", type="error")
+            return
+        base = _base_url()
+        headers = _device_headers()
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.post(
+                    f"{base}/api/me/device",
+                    headers=headers,
+                    json={"name": name_val, "device_type": device_type_val, "fingerprint": fp},
+                )
+                if r.status_code in (200, 201):
+                    self._device = r.json()
+                    raw = (self._device.get("default_action") or "add").lower()
+                    self._action_mode = "add" if raw == "add_stock" else (raw if raw in ACTION_MODES else "add")
+                    if self._device_dialog:
+                        self._device_dialog.close()
+                    if self._action_mode_row:
+                        self._update_action_mode_buttons()
+                    ui.notify("Device registered", type="positive")
+                else:
+                    ui.notify(f"Registration failed: {r.text}", type="error")
+        except Exception as e:
+            ui.notify(f"Error: {e}", type="error")
+
+    def _update_action_mode_buttons(self) -> None:
+        """Refresh action mode button states (rebuild row)."""
+        if not self._action_mode_row:
+            return
+        self._action_mode_row.clear()
+        with self._action_mode_row:
+            for mode in ACTION_MODES:
+                label = {"add": "Add Stock", "consume": "Consume", "transfer": "Transfer"}[mode]
+                ui.button(
+                    label,
+                    on_click=lambda m=mode: self._set_action_mode(m),
+                ).props("color=primary" if self._action_mode == mode else "flat")
+
+    async def _set_action_mode(self, mode: str) -> None:
+        """Set action mode and persist to device."""
+        self._action_mode = mode
+        self._update_action_mode_buttons()
+        if not self._device:
+            return
+        base = _base_url()
+        headers = _device_headers()
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.patch(
+                    f"{base}/api/me/device",
+                    headers=headers,
+                    json={"default_action": mode},
+                )
+        except Exception:
+            pass
+
+    async def _quick_add_one(self) -> None:
+        """POST /api/me/stock/add quantity 1 for last scanned product."""
+        if not self._last_scanned_product_id:
+            return
+        base = _base_url()
+        headers = _device_headers()
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.post(
+                    f"{base}/api/me/stock/add",
+                    headers=headers,
+                    json={"product_id": self._last_scanned_product_id, "quantity": 1},
+                )
+                if r.status_code == 200:
+                    ui.notify("+1 added", type="positive")
+                    if self.feedback:
+                        self.feedback.show_success("+1 added")
+                    self._clear_quick_actions()
+                else:
+                    ui.notify(r.text or "Add failed", type="error")
+        except Exception as e:
+            ui.notify(f"Error: {e}", type="error")
+
+    async def _quick_consume_one(self) -> None:
+        """POST /api/me/stock/consume quantity 1 for last scanned product."""
+        if not self._last_scanned_product_id:
+            return
+        base = _base_url()
+        headers = _device_headers()
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.post(
+                    f"{base}/api/me/stock/consume",
+                    headers=headers,
+                    json={"product_id": self._last_scanned_product_id, "quantity": 1},
+                )
+                if r.status_code == 200:
+                    ui.notify("-1 consumed", type="positive")
+                    if self.feedback:
+                        self.feedback.show_success("-1 consumed")
+                    self._clear_quick_actions()
+                else:
+                    ui.notify(r.text or "Consume failed", type="error")
+        except Exception as e:
+            ui.notify(f"Error: {e}", type="error")
+
+    def _clear_quick_actions(self) -> None:
+        """Hide quick action area and clear last scanned state."""
+        self._last_scanned_barcode = None
+        self._last_scanned_product_id = None
+        self._last_scanned_name = None
+        if self._quick_action_container:
+            self._quick_action_container.clear()
+            with self._quick_action_container:
+                pass
+
+    def _show_quick_actions(self, product_id: str, name: str) -> None:
+        """Show +1 / -1 buttons for scanned product (homebot inventory)."""
+        self._last_scanned_product_id = product_id
+        self._last_scanned_name = name
+        if not self._quick_action_container:
+            return
+        self._quick_action_container.clear()
+        with self._quick_action_container:
+            ui.label(f"Quick: {name}").classes("font-semibold mb-2")
+            with ui.row().classes("gap-2"):
+                ui.button("+1", on_click=self._quick_add_one).props("color=primary outline")
+                ui.button("-1", on_click=self._quick_consume_one).props("color=orange outline")
 
     async def handle_scan(self, barcode: str) -> None:
         """Handle barcode scan from scanner component."""
         if self.feedback:
             self.feedback.reset()
+        self._clear_quick_actions()
 
         try:
             # Call scan API
@@ -100,6 +323,23 @@ class ScanPage:
                             "Product found",
                             product.get("name", "Unknown product"),
                         )
+
+                    # Phase 3: if product is in homebot inventory, show quick +1/-1
+                    try:
+                        base = _base_url()
+                        async with httpx.AsyncClient(timeout=5) as client:
+                            r = await client.get(
+                                f"{base}/api/me/product-by-barcode/{barcode}",
+                                headers=_device_headers(),
+                            )
+                            if r.status_code == 200:
+                                info = r.json()
+                                self._show_quick_actions(
+                                    info["product_id"],
+                                    info.get("name", "Product"),
+                                )
+                    except Exception:
+                        pass
 
                     # Open review popup
                     if self.review_popup:
@@ -318,7 +558,7 @@ class ScanPage:
                                 )
 
 
-async def render() -> None:
+async def render(request: Request) -> None:
     """Render the scan page."""
     page = ScanPage()
 
@@ -338,6 +578,17 @@ async def render() -> None:
                     icon="edit",
                     on_click=lambda: ui.notify("Scan a location barcode to set"),
                 ).props("flat round dense")
+
+        # Phase 3: Action mode (Add Stock | Consume | Transfer)
+        with ui.card().classes("w-full mb-4"):
+            ui.label("Action mode").classes("font-semibold mb-2")
+            page._action_mode_row = ui.row().classes("gap-2")
+            page._update_action_mode_buttons()
+
+        # Quick actions after scan (+1/-1 when product in homebot)
+        with ui.card().classes("w-full mb-4"):
+            ui.label("Quick actions").classes("font-semibold mb-2")
+            page._quick_action_container = ui.column().classes("w-full")
 
         # Mode toggle and scanner/search area
         with ui.card().classes("w-full mb-4"):
@@ -380,5 +631,10 @@ async def render() -> None:
         on_confirm=page.handle_confirm,
         on_cancel=on_popup_closed,
     )
+
+    async def _on_load_device_check() -> None:
+        await page._check_device_and_show_register_if_needed(request)
+
+    ui.timer(0.3, _on_load_device_check, once=True)
 
     create_mobile_nav()
