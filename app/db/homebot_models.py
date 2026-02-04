@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON as SA_JSON, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -58,8 +58,12 @@ class HomebotPerson(Base):
     nickname: Mapped[str | None] = mapped_column(String(50))
     avatar_url: Mapped[str | None] = mapped_column(Text)
     color: Mapped[str | None] = mapped_column(String(7))
-    dietary_restrictions: Mapped[list[str] | None] = mapped_column(ARRAY(String))
-    allergies: Mapped[list[str] | None] = mapped_column(ARRAY(String))
+    dietary_restrictions: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String).with_variant(SA_JSON, "sqlite")
+    )
+    allergies: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String).with_variant(SA_JSON, "sqlite")
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
