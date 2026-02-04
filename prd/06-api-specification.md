@@ -1,0 +1,683 @@
+# 6. API Specification
+
+## 6.1 API Overview
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/scan` | POST | Process a barcode scan |
+| `/api/scan/{scan_id}/confirm` | POST | Confirm and add scanned product |
+| `/api/scan/{scan_id}/select` | POST | Select from multiple candidates |
+| `/api/products` | GET | List/search products |
+| `/api/products` | POST | Create new product |
+| `/api/products/{id}` | GET | Get product details |
+| `/api/products/{id}` | PUT | Update product |
+| `/api/products/{id}` | DELETE | Delete product |
+| `/api/products/search` | POST | Search products by name |
+| `/api/locations` | GET | List locations |
+| `/api/locations` | POST | Create location |
+| `/api/locations/{code}` | GET | Get location by code |
+| `/api/locations/{code}/print` | POST | Print location label |
+| `/api/jobs` | GET | List job queue |
+| `/api/jobs/{id}` | GET | Get job details |
+| `/api/jobs/{id}/retry` | POST | Retry failed job |
+| `/api/jobs/{id}/cancel` | POST | Cancel pending job |
+| `/api/settings` | GET | Get current settings |
+| `/api/settings` | PUT | Update settings |
+| `/api/logs` | GET | Get application logs |
+| `/api/auth/login` | POST | Authenticate user |
+| `/api/auth/logout` | POST | Logout user |
+| `/api/health` | GET | Health check |
+| `/metrics` | GET | Prometheus metrics |
+
+## 6.2 Pydantic Schemas
+
+### Scan Schemas
+
+```python
+# app/schemas/scan.py
+from pydantic import BaseModel, Field
+from typing import Optional
+from datetime import datetime
+from uuid import UUID
+from enum import Enum
+
+
+class InputMethod(str, Enum):
+    CAMERA = "camera"
+    SCANNER = "scanner"
+    MANUAL = "manual"
+
+
+class ScanRequest(BaseModel):
+    """Request to scan and process a barcode."""
+    barcode: str = Field(..., min_length=1, max_length=100, description="Barcode value")
+    input_method: InputMethod = InputMethod.SCANNER
+    location_code: Optional[str] = Field(None, description="Current location code (LOC-XXX)")
+    best_before: Optional[datetime] = Field(None, description="Expiration date")
+    auto_add: Optional[bool] = Field(None, description="Override auto-add setting")
+
+
+class ScanResponse(BaseModel):
+    """Response from scan operation."""
+    scan_id: UUID
+    status: str  # found, not_found, pending_review, added, error
+    barcode: str
+    product: Optional["ProductDetail"] = None
+    candidates: Optional[list["ProductCandidate"]] = None
+    requires_review: bool = False
+    job_id: Optional[UUID] = None  # If LLM optimization queued
+    message: str
+
+
+class ProductCandidate(BaseModel):
+    """Potential product match for user selection."""
+    product_id: Optional[UUID] = None
+    grocy_product_id: Optional[int] = None
+    name: str
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    source: str  # local, grocy, lookup
+    image_url: Optional[str] = None
+
+
+class ProductDetail(BaseModel):
+    """Full product details."""
+    id: Optional[UUID] = None
+    grocy_product_id: Optional[int] = None
+    name: str
+    description: Optional[str] = None
+    category: Optional[str] = None
+    quantity_unit: Optional[str] = None
+    image_url: Optional[str] = None
+    nutrition: Optional[dict] = None
+    barcodes: list[str] = []
+    llm_optimized: bool = False
+    lookup_provider: Optional[str] = None
+```
+
+### Product Schemas
+
+```python
+# app/schemas/product.py
+class ProductCreate(BaseModel):
+    """Create a new product."""
+    name: str = Field(..., min_length=1, max_length=500)
+    description: Optional[str] = None
+    category: Optional[str] = None
+    quantity_unit: Optional[str] = "pieces"
+    barcodes: list[str] = []
+    add_to_grocy: bool = True
+    add_stock: bool = False
+    location_code: Optional[str] = None
+    best_before: Optional[datetime] = None
+
+
+class ProductUpdate(BaseModel):
+    """Update an existing product."""
+    name: Optional[str] = Field(None, min_length=1, max_length=500)
+    description: Optional[str] = None
+    category: Optional[str] = None
+    quantity_unit: Optional[str] = None
+
+
+class ProductSearch(BaseModel):
+    """Search parameters for products."""
+    query: str = Field(..., min_length=1)
+    include_grocy: bool = True
+    limit: int = Field(20, ge=1, le=100)
+```
+
+### Location Schemas
+
+```python
+# app/schemas/location.py
+class LocationCreate(BaseModel):
+    """Create a new location."""
+    code: str = Field(..., pattern=r"^LOC-[A-Z0-9]+-[0-9]+$")
+    name: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    is_freezer: bool = False
+    sync_to_grocy: bool = True
+
+
+class LocationResponse(BaseModel):
+    """Location response."""
+    id: UUID
+    code: str
+    name: str
+    description: Optional[str] = None
+    is_freezer: bool
+    grocy_location_id: Optional[int] = None
+```
+
+### Job Schemas
+
+```python
+# app/schemas/job.py
+class JobStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class JobType(str, Enum):
+    LLM_OPTIMIZE = "llm_optimize"
+    GROCY_SYNC = "grocy_sync"
+    IMAGE_DOWNLOAD = "image_download"
+    OFFLINE_SYNC = "offline_sync"
+
+
+class JobResponse(BaseModel):
+    """Job queue item response."""
+    id: UUID
+    job_type: JobType
+    status: JobStatus
+    payload: dict
+    result: Optional[dict] = None
+    error_message: Optional[str] = None
+    attempts: int
+    max_attempts: int
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+
+class JobRetry(BaseModel):
+    """Retry a failed job."""
+    job_id: UUID
+    reset_attempts: bool = False
+```
+
+### Settings Schemas
+
+```python
+# app/schemas/settings.py
+class LLMProviderPreset(str, Enum):
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    OLLAMA = "ollama"
+    GENERIC = "generic"
+
+
+class LookupStrategy(str, Enum):
+    SEQUENTIAL = "sequential"
+    PARALLEL = "parallel"
+
+
+class SettingsUpdate(BaseModel):
+    """Update application settings."""
+    # Grocy connection
+    grocy_api_url: Optional[str] = None
+    grocy_api_key: Optional[str] = None
+    grocy_web_url: Optional[str] = None
+
+    # LLM configuration
+    llm_provider_preset: Optional[LLMProviderPreset] = None
+    llm_api_url: Optional[str] = None
+    llm_api_key: Optional[str] = None
+    llm_model: Optional[str] = None
+
+    # Lookup configuration
+    lookup_strategy: Optional[LookupStrategy] = None
+    lookup_provider_order: Optional[list[str]] = None
+    lookup_cache_ttl_days: Optional[int] = None
+
+    # Provider API keys
+    goupc_api_key: Optional[str] = None
+    upcitemdb_api_key: Optional[str] = None
+    brave_api_key: Optional[str] = None
+
+    # Scanning behavior
+    auto_add_enabled: Optional[bool] = None
+    fuzzy_match_threshold: Optional[float] = Field(None, ge=0.0, le=1.0)
+    default_quantity_unit: Optional[str] = None
+
+    # UI preferences
+    dark_mode: Optional[bool] = None
+    kiosk_mode: Optional[bool] = None
+
+
+class SettingsResponse(BaseModel):
+    """Current settings (sensitive fields redacted)."""
+    grocy_api_url: Optional[str] = None
+    grocy_api_key_set: bool = False
+    grocy_web_url: Optional[str] = None
+
+    llm_provider_preset: LLMProviderPreset = LLMProviderPreset.GENERIC
+    llm_api_url: Optional[str] = None
+    llm_api_key_set: bool = False
+    llm_model: Optional[str] = None
+
+    lookup_strategy: LookupStrategy = LookupStrategy.SEQUENTIAL
+    lookup_provider_order: list[str] = []
+    lookup_cache_ttl_days: int = 30
+
+    goupc_api_key_set: bool = False
+    upcitemdb_api_key_set: bool = False
+    brave_api_key_set: bool = False
+
+    auto_add_enabled: bool = False
+    fuzzy_match_threshold: float = 0.9
+    default_quantity_unit: str = "pieces"
+
+    dark_mode: bool = False
+    kiosk_mode: bool = False
+```
+
+## 6.3 API Error Responses
+
+```python
+# app/core/exceptions.py
+from fastapi import HTTPException
+from pydantic import BaseModel
+
+
+class ErrorResponse(BaseModel):
+    """Standard error response."""
+    error: str
+    message: str
+    details: dict | None = None
+    request_id: str | None = None
+
+
+class GrocyScanException(Exception):
+    """Base exception for GrocyScan."""
+    def __init__(self, message: str, details: dict | None = None):
+        self.message = message
+        self.details = details
+
+
+class BarcodeNotFoundError(GrocyScanException):
+    """Barcode not found in any lookup provider."""
+    pass
+
+
+class GrocyConnectionError(GrocyScanException):
+    """Failed to connect to Grocy API."""
+    pass
+
+
+class LLMError(GrocyScanException):
+    """LLM provider error."""
+    pass
+
+
+class LookupProviderError(GrocyScanException):
+    """External lookup provider error."""
+    pass
+
+
+class TenantNotSelectedError(GrocyScanException):
+    """No active tenant in session."""
+    pass
+
+
+class TenantMismatchError(GrocyScanException):
+    """Resource belongs to different tenant than active session."""
+    pass
+```
+
+---
+
+## 6.4 API Versioning
+
+### API Routes Structure
+
+| Path Prefix | Purpose | Status |
+|-------------|---------|--------|
+| `/api/*` | Grocy-compatible endpoints | Compatibility layer |
+| `/api/v1/*` | Legacy native API | Deprecated |
+| `/api/v2/*` | Primary native API | **Active** |
+
+The `/api/v2/*` routes are the primary API. The `/api/*` routes provide Grocy compatibility for existing integrations.
+
+---
+
+## 6.5 Custom Attributes System (v2 API)
+
+### Base Schemas
+
+```yaml
+# OpenAPI 3.1 schemas for custom attributes
+components:
+  schemas:
+    JsonPrimitive:
+      oneOf:
+        - type: string
+        - type: number
+        - type: integer
+        - type: boolean
+        - type: "null"
+
+    JsonValue:
+      description: Recursive JSON value.
+      oneOf:
+        - $ref: "#/components/schemas/JsonPrimitive"
+        - type: array
+          items:
+            $ref: "#/components/schemas/JsonValue"
+        - type: object
+          additionalProperties:
+            $ref: "#/components/schemas/JsonValue"
+
+    Attributes:
+      description: >
+        Custom attributes stored as nested JSON.
+        Keys are free-form at storage time; dot-path addressing is used by patch operations.
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/JsonValue"
+
+    EffectiveAttributes:
+      allOf:
+        - $ref: "#/components/schemas/Attributes"
+      description: Server-computed merged attributes (read-only).
+      readOnly: true
+```
+
+### Attribute Patch Request
+
+```yaml
+components:
+  schemas:
+    AttributePath:
+      description: Dot-path for an attribute (e.g. storage.fridge_days_override)
+      type: string
+      pattern: '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$'
+
+    AttributesPatchRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        set:
+          description: Map of dot-path keys to JSON values to set.
+          type: object
+          propertyNames:
+            $ref: "#/components/schemas/AttributePath"
+          additionalProperties:
+            $ref: "#/components/schemas/JsonValue"
+        unset:
+          description: List of dot-path keys to remove.
+          type: array
+          items:
+            $ref: "#/components/schemas/AttributePath"
+      anyOf:
+        - required: [set]
+        - required: [unset]
+```
+
+### Patch Endpoint Usage
+
+```yaml
+paths:
+  /api/v2/products/{id}/attributes:
+    patch:
+      operationId: patchProductAttributes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttributesPatchRequest"
+      responses:
+        "200":
+          description: Updated product (including effective_attributes)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+
+  /api/v2/product-instances/{id}/attributes:
+    patch:
+      operationId: patchProductInstanceAttributes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttributesPatchRequest"
+      responses:
+        "200":
+          description: Updated instance (including effective_attributes)
+```
+
+### Example Request
+
+```json
+// PATCH /api/v2/products/123/attributes
+{
+  "set": {
+    "storage.fridge_days_override": 7,
+    "diet.protocols": ["keto", "low_fodmap"],
+    "supplement.synthetic": false
+  },
+  "unset": ["old.deprecated.field"]
+}
+```
+
+---
+
+## 6.6 Attribute Definitions Endpoint
+
+Provides runtime validation and UI hints for dynamic attributes.
+
+### Endpoint
+
+```
+GET /api/v2/attribute-definitions
+```
+
+### Query Parameters
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `scope` | string | Filter by target: `product`, `instance`, `container`, `any` |
+| `namespace` | string | Filter by namespace: `storage`, `diet`, `allergen`, etc. |
+
+### Response Schema
+
+```yaml
+components:
+  schemas:
+    AttributeDefinitionsResponse:
+      type: object
+      required: [version, generated_at, path_pattern, namespaces, definitions]
+      properties:
+        version:
+          type: string
+          description: Registry version for caching.
+        generated_at:
+          type: string
+          format: date-time
+        path_pattern:
+          type: string
+          description: Regex for validating dot-path keys.
+        namespaces:
+          type: array
+          items:
+            $ref: "#/components/schemas/AttributeNamespace"
+        definitions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AttributeDefinition"
+
+    AttributeNamespace:
+      type: object
+      required: [name, allowed_targets, key_prefix, rules]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        allowed_targets:
+          type: array
+          items:
+            type: string
+            enum: [product, instance, container]
+        key_prefix:
+          type: string
+        rules:
+          type: object
+          properties:
+            unknown_keys_policy:
+              type: string
+              enum: [allow, warn, reject]
+            additional_properties_policy:
+              type: string
+              enum: [allow, reject]
+
+    AttributeDefinition:
+      type: object
+      required: [key, namespace, targets, value_schema, ui]
+      properties:
+        key:
+          type: string
+          description: Full dot-path attribute key.
+        namespace:
+          type: string
+        targets:
+          type: array
+          items:
+            type: string
+            enum: [product, instance, container]
+        value_schema:
+          type: object
+          description: JSON Schema fragment for value validation.
+          additionalProperties: true
+        ui:
+          $ref: "#/components/schemas/AttributeUiHints"
+        semantics:
+          type: object
+          properties:
+            inheritance:
+              type: string
+              enum: [none, instance_overrides_product]
+            null_means_delete:
+              type: boolean
+        examples:
+          type: array
+        deprecated:
+          type: boolean
+
+    AttributeUiHints:
+      type: object
+      required: [label, component]
+      properties:
+        label:
+          type: string
+        help:
+          type: string
+        group:
+          type: string
+        order:
+          type: integer
+        component:
+          type: string
+          description: UI component type (text, number, toggle, select, multi_select, etc.)
+        unit_hint:
+          type: string
+        step:
+          type: number
+        options_source:
+          type: object
+          properties:
+            type:
+              type: string
+              enum: [static, endpoint]
+            options:
+              type: array
+              items:
+                type: object
+                properties:
+                  value:
+                    type: string
+                  label:
+                    type: string
+```
+
+### Example Response
+
+```json
+{
+  "version": "2026-02-03.1",
+  "generated_at": "2026-02-03T14:30:00Z",
+  "path_pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$",
+  "namespaces": [
+    {
+      "name": "storage",
+      "description": "Storage guidance and overrides",
+      "allowed_targets": ["product", "instance"],
+      "key_prefix": "storage.",
+      "rules": {
+        "unknown_keys_policy": "allow",
+        "additional_properties_policy": "allow"
+      }
+    }
+  ],
+  "definitions": [
+    {
+      "key": "storage.fridge_days_override",
+      "namespace": "storage",
+      "targets": ["product", "instance"],
+      "value_schema": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 3650
+      },
+      "ui": {
+        "label": "Fridge days (override)",
+        "help": "Override default guideline",
+        "component": "number",
+        "step": 1,
+        "unit_hint": "days",
+        "group": "Storage",
+        "order": 10
+      },
+      "semantics": {
+        "inheritance": "instance_overrides_product",
+        "null_means_delete": true
+      },
+      "examples": [2, 3, 7],
+      "deprecated": false
+    }
+  ]
+}
+```
+
+---
+
+## 6.7 Tenant-Related Error Responses
+
+### Tenant Not Selected (409)
+
+```json
+{
+  "error": "tenant_not_selected",
+  "message": "No active tenant in session",
+  "tenants": [
+    { "tenant_id": "uuid-1", "name": "Home" },
+    { "tenant_id": "uuid-2", "name": "Parents" }
+  ]
+}
+```
+
+### Tenant Mismatch (409)
+
+```json
+{
+  "error": "tenant_mismatch",
+  "message": "This resource belongs to a different tenant",
+  "required_tenant_id": "uuid-2",
+  "current_tenant_id": "uuid-1",
+  "required_tenant_name": "Parents"
+}
+```
+
+---
+
+## Navigation
+
+- **Previous:** [Data Models](05-data-models.md)
+- **Next:** [UI Specification](07-ui-specification.md)
+- **Back to:** [README](README.md)
