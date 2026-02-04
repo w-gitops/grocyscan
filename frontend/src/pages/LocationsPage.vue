@@ -1,19 +1,19 @@
 <template>
-  <q-page class="q-pa-md">
+  <q-page class="q-pa-md" data-testid="locations-page">
     <div class="row items-center q-mb-md">
       <div class="text-h5">Locations</div>
       <q-space />
-      <q-btn icon="add" label="Add Location" color="primary" @click="addDialog = true" />
+      <q-btn icon="add" label="Add Location" color="primary" @click="addDialog = true" data-testid="locations-add-button" />
     </div>
 
-    <q-card v-if="loading" flat bordered class="q-mb-md">
+    <q-card v-if="loading" flat bordered class="q-mb-md" data-testid="locations-loading">
       <q-card-section>Loading...</q-card-section>
     </q-card>
 
-    <q-list v-else-if="locations.length" bordered separator>
-      <q-item v-for="loc in locations" :key="loc.id">
+    <q-list v-else-if="locations.length" bordered separator data-testid="locations-list">
+      <q-item v-for="loc in locations" :key="loc.id" data-testid="location-card">
         <q-item-section avatar>
-          <q-icon :name="loc.is_freezer ? 'ac_unit' : 'location_on'" :color="loc.is_freezer ? 'blue' : 'grey'" />
+          <q-icon :name="loc.is_freezer ? 'ac_unit' : 'location_on'" :color="loc.is_freezer ? 'blue' : 'grey'" :data-testid="loc.is_freezer ? 'location-freezer-icon' : 'location-icon'" />
         </q-item-section>
         <q-item-section>
           <q-item-label>{{ loc.name }}</q-item-label>
@@ -22,19 +22,19 @@
       </q-item>
     </q-list>
 
-    <q-card v-else flat bordered>
+    <q-card v-else flat bordered data-testid="locations-empty">
       <q-card-section>No locations configured. Click "Add Location" to create one.</q-card-section>
     </q-card>
 
     <!-- Add Location dialog -->
-    <q-dialog v-model="addDialog">
-      <q-card style="min-width: 320px">
+    <q-dialog v-model="addDialog" data-testid="location-dialog">
+      <q-card style="min-width: 320px" data-testid="location-dialog-card">
         <q-card-section>
           <div class="text-h6">Add Location</div>
         </q-card-section>
         <q-card-section>
-          <q-input v-model="newLoc.name" label="Name" outlined dense class="q-mb-sm" />
-          <q-input v-model="newLoc.description" label="Description (optional)" outlined dense class="q-mb-sm" />
+          <q-input v-model="newLoc.name" label="Name" outlined dense class="q-mb-sm" data-testid="location-name-input" />
+          <q-input v-model="newLoc.description" label="Description (optional)" outlined dense class="q-mb-sm" data-testid="location-description-input" />
           <q-select
             v-model="newLoc.location_type"
             :options="['shelf', 'fridge', 'freezer', 'pantry', 'cabinet', 'other']"
@@ -42,12 +42,13 @@
             outlined
             dense
             class="q-mb-sm"
+            data-testid="location-type-select"
           />
-          <q-toggle v-model="newLoc.is_freezer" label="Is freezer" />
+          <q-toggle v-model="newLoc.is_freezer" label="Is freezer" data-testid="location-freezer-toggle" />
         </q-card-section>
         <q-card-actions align="right">
-          <q-btn flat label="Cancel" v-close-popup />
-          <q-btn flat label="Add" color="primary" @click="createLocation" :loading="saving" />
+          <q-btn flat label="Cancel" v-close-popup data-testid="location-cancel-button" />
+          <q-btn flat label="Add" color="primary" @click="createLocation" :loading="saving" data-testid="location-save-button" />
         </q-card-actions>
       </q-card>
     </q-dialog>

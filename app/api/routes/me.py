@@ -1,4 +1,4 @@
-"""Session-based /api/me endpoints for NiceGUI (Phase 3 Option A).
+"""Session-based /api/me endpoints for Vue frontend.
 
 Uses session cookie auth; requires X-Device-ID header for device operations.
 Resolves tenant from first tenant in DB (single-tenant default).

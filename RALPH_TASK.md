@@ -1,40 +1,59 @@
 ---
-task: Homebot Phase 3 - Device & UI
-test_command: pytest tests/phase3/ tests/phase2/ tests/phase1/ -v --tb=short
+task: Deprecate NiceGUI
+test_command: pytest tests/ -v --tb=short && cd frontend && npm run build
 browser_validation: false
 ---
 
-# Task: Homebot Phase 3 - Device & UI
+# Task: Deprecate and Remove NiceGUI
 
-Device registration, preferences, and UI (Vue/Quasar or NiceGUI validation).
+Remove NiceGUI code, dependencies, and documentation references. Vue/Quasar is now the sole frontend.
 
-**PRD Reference:** [prd/80.13-ralph-phase-3-device-ui.md](prd/80.13-ralph-phase-3-device-ui.md)
+**PRD Reference:** [prd/90.10-deprecate-nicegui.md](prd/90.10-deprecate-nicegui.md)
 
 ## Success Criteria
 
-### Frontend Scaffold
+### Code Removal
 
-- [x] **[1]** Vue 3 + Quasar project initialized (Option B) or use NiceGUI (Option A)
-- [x] **[2]** Pinia store configured (auth, device)
-- [x] **[3]** Router with auth guards
+- [ ] **[1] [CRITICAL]** Delete `app/ui/` directory entirely
+  - All 14 Python files removed
+  - Test: `ls app/ui/` returns "No such file or directory"
 
-### Device Management
+- [ ] **[2] [CRITICAL]** Remove NiceGUI from `app/main.py`
+  - Remove NiceGUI imports
+  - Remove `ui.run()` or NiceGUI mounting code
+  - Remove any NiceGUI-specific middleware
+  - Test: `grep -r "nicegui" app/main.py` returns nothing
 
-- [x] **[4]** Device registration on first visit <!-- POST /api/v2/devices -->
-- [x] **[5]** Device preferences stored <!-- PATCH /api/v2/devices/me -->
-- [x] **[6]** Device fingerprinting <!-- X-Device-ID, same fingerprint = same device -->
+- [ ] **[3] [CRITICAL]** Remove NiceGUI from dependencies
+  - Remove from `requirements.txt`
+  - Remove from `pyproject.toml`
+  - Test: `grep nicegui requirements.txt` returns nothing
 
-### Scanning Interface
+- [ ] **[4] [CORE]** Clean up any remaining NiceGUI imports
+  - Check `app/api/routes/me.py` for NiceGUI references
+  - Remove any `from nicegui import` statements
+  - Test: `grep -r "from nicegui" app/` returns nothing
 
-- [x] **[7]** Camera barcode scanner works
-- [x] **[8]** Action mode selection
-- [x] **[9]** Quick actions after scan
+### Documentation Updates
 
-### Product Views
+- [ ] **[5] [CRITICAL]** Update Phase 3 PRD
+  - Remove Option A (NiceGUI validation path)
+  - Make Option B (Vue/Quasar) the only path
+  - Update `browser_url` to `:3335` only
 
-- [x] **[10]** Product list with search
-- [x] **[11]** Product detail view
-- [x] **[12]** PWA installable
+- [ ] **[6] [CORE]** Update architecture PRDs
+  - Update `prd/30.10-technical-architecture.md` frontend stack
+  - Update `prd/30.13-ui-specification.md` to Vue only
+  - Update `prd/40.15-deployment.md` if needed
+
+- [ ] **[7] [CORE]** Update feature PRDs
+  - Update `prd/feature-scanner-gun-mode.md` to Vue
+  - Update `prd/feature-product-name-search.md` to Vue
+
+- [ ] **[8] [FLEX]** Update project documentation
+  - Update `README.md` stack description
+  - Add entry to `CHANGELOG.md`
+  - Add decision to `prd/91.14-decision-log.md`
 
 ---
 
@@ -42,14 +61,8 @@ Device registration, preferences, and UI (Vue/Quasar or NiceGUI validation).
 
 - **Deploy Target:** `192.168.200.37` via SSH (root)
 - **Install Path:** `/opt/grocyscan/`
-- **Port:** 3334 (API), 3335 (Vue target)
-- **Option A:** Validate with existing NiceGUI at :3334 first.
-- **Option B:** Build Vue/Quasar frontend at :3335.
-
-## Technical Notes
-
-- Migration 0006: homebot.devices (fingerprint, default_location_id, default_action, preferences).
-- v2 API: POST /api/v2/devices (register), GET/PATCH /api/v2/devices/me (X-Device-ID required for me).
+- **Port:** 3334 (API), 3335 (Vue frontend)
+- Vue/Quasar frontend has full feature parity
 
 ## Phase Navigation
 
@@ -57,8 +70,6 @@ Device registration, preferences, and UI (Vue/Quasar or NiceGUI validation).
 |-------|----------|--------|
 | 1 | [Foundation](prd/80.11-ralph-phase-1-foundation.md) | Complete |
 | 2 | [Inventory](prd/80.12-ralph-phase-2-inventory.md) | Complete |
-| 3 | [Device & UI](prd/80.13-ralph-phase-3-device-ui.md) | **Current** |
+| 3 | [Device & UI](prd/80.13-ralph-phase-3-device-ui.md) | Complete |
+| Maintenance | [Deprecate NiceGUI](prd/90.10-deprecate-nicegui.md) | **Current** |
 | 4 | [Labels & QR](prd/80.14-ralph-phase-4-labels-qr.md) | Pending |
-| 5 | [Recipes](prd/80.15-ralph-phase-5-recipes.md) | Pending |
-| 6 | [Intelligence](prd/80.16-ralph-phase-6-intelligence.md) | Pending |
-| 7 | [Documents](prd/80.17-ralph-phase-7-documents.md) | Pending |
