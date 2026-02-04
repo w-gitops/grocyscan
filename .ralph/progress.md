@@ -43,7 +43,7 @@ Criteria:
 - RLS and tenant context via X-Tenant-ID and get_db_homebot.
 
 ### Phase 3: Device & UI
-**Status:** Complete (Option A: NiceGUI)
+**Status:** Complete (Option A: NiceGUI). All 12 criteria [1]–[12] checked; test suite 26 passed, 13 skipped (2026-02-04).
 
 - Migration 0006: homebot.devices. v2 API: POST /api/v2/devices, GET/PATCH /api/v2/devices/me (X-Device-ID). Criteria 4,5,6 done.
 - Option A (NiceGUI): /api/me router mounted. Device registration, action mode, quick actions. Criteria 8, 9 done. Criteria 10, 11: product list with search, product detail with Edit.
