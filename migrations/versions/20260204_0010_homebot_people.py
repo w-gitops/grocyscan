@@ -1,7 +1,7 @@
 """Homebot people table for household profiles.
 
-Revision ID: 0008
-Revises: 0007
+Revision ID: 0010
+Revises: 0009
 Create Date: 2026-02-04
 
 """
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0008"
-down_revision: Union[str, None] = "0007"
+revision: str = "0010"
+down_revision: Union[str, None] = "0009"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

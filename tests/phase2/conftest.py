@@ -29,6 +29,7 @@ async def auth_headers(client: AsyncClient, monkeypatch) -> dict[str, str]:
     monkeypatch.setattr(app_settings, "auth_username", "test@test.com")
     monkeypatch.setattr(app_settings, "auth_password_hash", SecretStr(hash_password("secret")))
     monkeypatch.setattr(app_settings, "secret_key", "test-secret")
+    monkeypatch.setattr(app_settings, "auth_enabled", True)
 
     r = await client.post(
         "/api/v2/auth/login",
