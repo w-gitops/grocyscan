@@ -398,8 +398,8 @@ async def test_lookup_provider(provider: str) -> ProviderTestResponse:
     Returns:
         ProviderTestResponse: Test result
     """
-    # Test barcode - Nutella (well-known product)
-    test_barcode = "3017620422003"
+    # Test barcode - Coca-Cola Classic (widely available in most databases)
+    test_barcode = "049000042566"
     
     try:
         # Import provider classes directly to test them independently
