@@ -51,15 +51,17 @@ async def create_product(
         db.add(barcode_row)
     await db.commit()
     await db.refresh(product)
-    return ProductResponse.model_validate(product)
+    barcodes_list = [body.barcode.strip()] if body.barcode and body.barcode.strip() else []
+    return _product_to_response(product, barcodes=barcodes_list)
 
 
 def _product_to_response(product: HomebotProduct, barcodes: list[str] | None = None) -> ProductResponse:
-    """Build ProductResponse with optional barcodes."""
-    data = ProductResponse.model_validate(product).model_dump()
+    """Build ProductResponse. When barcodes is provided, use it to avoid lazy-loading in async context."""
     if barcodes is not None:
+        data = {f: getattr(product, f) for f in ProductResponse.model_fields if f != "barcodes"}
         data["barcodes"] = barcodes
-    return ProductResponse(**data)
+        return ProductResponse(**data)
+    return ProductResponse.model_validate(product)
 
 
 @router.get("/{product_id}", response_model=ProductResponse)

@@ -66,4 +66,13 @@ jobs:
         run: python -m alembic upgrade head
 
       - name: Run tests
-        run: python -m pytest tests/ -v --tb=short -n auto
+        run: |
+          mkdir -p test-artifacts
+          python -m pytest tests/ -v --tb=short -n auto 2>&1 | tee test-artifacts/pytest.log
+          exit ${PIPESTATUS[0]}
+      - name: Upload test-artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts
+          path: test-artifacts/
