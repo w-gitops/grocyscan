@@ -72,8 +72,12 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         return
     if session.testsfailed:
         return
-    skipped = len(session.stats.get("skipped", [])) if hasattr(session, "stats") else 0
-    total = len(session.stats.get("passed", [])) + len(session.stats.get("failed", [])) + skipped
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if reporter is None or not getattr(reporter, "stats", None):
+        return
+    stats = reporter.stats
+    skipped = len(stats.get("skipped", []))
+    total = len(stats.get("passed", [])) + len(stats.get("failed", [])) + skipped
     if total and skipped > total // 2:
         session.exitstatus = 1
 
