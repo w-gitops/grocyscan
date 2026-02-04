@@ -1,0 +1,5 @@
+# Ignore all contents of test-artifacts (reports, zips, expanded output).
+# The folder and README.md are tracked so the directory exists for everyone.
+*
+!.gitignore
+!README.md

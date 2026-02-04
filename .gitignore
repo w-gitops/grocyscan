@@ -227,3 +227,9 @@ data/
 logs/
 *.dump
 .ralph/screenshots/
+
+# Test artifacts: folder tracked, contents ignored
+test-artifacts/*
+!test-artifacts/.gitignore
+!test-artifacts/README.md
+playwright-report.zip
