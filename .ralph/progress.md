@@ -51,6 +51,10 @@ Criteria:
 - **Criterion 7:** Camera barcode scanner: BarcodeScanner component with camera button, html5-qrcode, formats UPC/EAN/CODE_128/QR; live camera requires HTTPS and permission (manual validation if 502/LAN).
 - **Criterion 12:** PWA: /manifest.json and /sw.js served from app/static/pwa/; manifest link and theme-color in index; service worker registered on load; app installable on supported browsers.
 
+### Vue/Quasar frontend (separate milestone)
+
+- **frontend/** added: Vue 3 + Quasar v2 + Vite, port 3335, proxy to API 3334. Pinia stores (auth, device), Vue Router with auth guard, Login/Scan/Products pages calling /api/auth/login, /api/me/device, /api/me/product-by-barcode, /api/me/products, /api/me/stock/add|consume. Device fingerprint in services/device.js. Build: `npm run build`; dev: `npm run dev`.
+
 ### Phase 4: Labels & QR
 **Status:** Pending (requires Phase 3)
 
