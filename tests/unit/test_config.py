@@ -1,12 +1,25 @@
 """Tests for application configuration."""
 
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
 from app.config import Settings
 
 
 def test_default_settings() -> None:
     """Test default settings values."""
     settings = Settings()
-    assert settings.grocyscan_version == "0.1.0-alpha"
+    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    version = None
+    try:
+        import tomllib
+    except ImportError:  # pragma: no cover - Python 3.11+ ships tomllib
+        import tomli as tomllib  # type: ignore
+    with pyproject.open("rb") as f:
+        version = tomllib.load(f)["project"]["version"]
+    assert settings.grocyscan_version == version
     assert settings.grocyscan_env == "development"
     assert settings.grocyscan_port == 3334
 
@@ -29,3 +42,42 @@ def test_is_production() -> None:
     settings = Settings(grocyscan_env="production")
     assert settings.is_development is False
     assert settings.is_production is True
+
+
+def test_session_cookie_domain_normalizes_url() -> None:
+    """Session cookie domain strips scheme and returns hostname."""
+    settings = Settings(session_cookie_domain="https://homebot.ssiops.com")
+    assert settings.session_cookie_domain == "homebot.ssiops.com"
+    assert settings.session_cookie_domain_resolved == "homebot.ssiops.com"
+
+
+def test_session_cookie_domain_empty_resolves_none() -> None:
+    """Blank cookie domain resolves to None."""
+    settings = Settings(session_cookie_domain="  ")
+    assert settings.session_cookie_domain_resolved is None
+
+
+def test_session_cookie_samesite_normalized() -> None:
+    """Cookie SameSite is normalized to lowercase."""
+    settings = Settings(session_cookie_samesite="None")
+    assert settings.session_cookie_samesite == "none"
+
+
+def test_session_cookie_secure_resolved_defaults_to_env() -> None:
+    """Secure flag defaults to production-only when unset."""
+    prod = Settings(grocyscan_env="production", session_cookie_secure=None)
+    dev = Settings(grocyscan_env="development", session_cookie_secure=None)
+    assert prod.session_cookie_secure_resolved is True
+    assert dev.session_cookie_secure_resolved is False
+
+
+def test_session_cookie_secure_override() -> None:
+    """Secure flag honors explicit override."""
+    settings = Settings(grocyscan_env="production", session_cookie_secure=False)
+    assert settings.session_cookie_secure_resolved is False
+
+
+def test_session_cookie_name_required() -> None:
+    """Cookie name cannot be empty."""
+    with pytest.raises(ValidationError):
+        Settings(session_cookie_name="  ")
