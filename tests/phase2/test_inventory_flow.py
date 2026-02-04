@@ -25,20 +25,32 @@ async def client():
 
 @pytest_asyncio.fixture
 async def auth_headers(client):
-    from app.services.auth import hash_password
-    from unittest.mock import patch
+    """JWT auth headers; patch settings in both auth route and services.auth so encode/decode use same secret."""
+    from unittest.mock import MagicMock, patch
 
-    with patch("app.api.routes.v2.auth.settings") as mock_settings:
-        mock_settings.auth_username = "test@test.com"
-        mock_settings.auth_password_hash.get_secret_value.return_value = hash_password("secret")
-        mock_settings.secret_key = "test-secret"
+    from app.services.auth import hash_password
+
+    mock_settings = MagicMock()
+    mock_settings.auth_username = "test@test.com"
+    mock_settings.auth_password_hash.get_secret_value.return_value = hash_password("secret")
+    mock_settings.secret_key = "test-secret"
+    with (
+        patch("app.api.routes.v2.auth.settings", mock_settings),
+        patch("app.services.auth.settings", mock_settings),
+    ):
         r = await client.post(
             "/api/v2/auth/login",
             json={"email": "test@test.com", "password": "secret"},
         )
-    assert r.status_code == 200
-    token = r.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
+        assert r.status_code == 200
+        token = r.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+    # Yield from inside patch so decode_jwt (used by get_current_user_v2) sees same secret
+    with (
+        patch("app.api.routes.v2.auth.settings", mock_settings),
+        patch("app.services.auth.settings", mock_settings),
+    ):
+        yield headers
 
 
 @pytest.fixture
