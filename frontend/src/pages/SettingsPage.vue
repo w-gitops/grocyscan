@@ -122,24 +122,26 @@
             <div class="row items-center justify-between">
               <div class="row items-center q-gutter-sm">
                 <span class="text-subtitle2">UPCitemdb</span>
-                <q-badge color="orange" label="API Key" />
-                <q-badge v-if="keysConfigured.upcitemdb" color="green" label="Key Set" />
+                <q-badge color="green" label="Free Tier" />
+                <q-badge v-if="keysConfigured.upcitemdb" color="blue" label="API Key Set" />
               </div>
               <div class="row items-center q-gutter-sm">
                 <q-btn flat dense size="sm" label="Test" @click="testProvider('upcitemdb')" :loading="providerTesting.upcitemdb" />
                 <q-toggle v-model="lookup.upcitemdb_enabled" />
               </div>
             </div>
-            <div class="text-caption text-grey q-mt-xs">Large UPC database with free tier available.</div>
-            <q-input
-              v-model="lookup.upcitemdb_api_key"
-              label="API Key"
-              outlined
-              dense
-              type="password"
-              class="q-mt-sm"
-              :placeholder="keysConfigured.upcitemdb ? 'Leave blank to keep existing' : 'Enter UPCitemdb API key'"
-            />
+            <div class="text-caption text-grey q-mt-xs">Large UPC database. Free tier: 100 requests/day. API key for unlimited access.</div>
+            <q-expansion-item dense label="API Key (optional - for unlimited access)" class="q-mt-sm">
+              <q-input
+                v-model="lookup.upcitemdb_api_key"
+                label="API Key"
+                outlined
+                dense
+                type="password"
+                class="q-mt-xs"
+                :placeholder="keysConfigured.upcitemdb ? 'Leave blank to keep existing' : 'Enter UPCitemdb API key (optional)'"
+              />
+            </q-expansion-item>
             <div v-if="providerStatus.upcitemdb" class="text-caption q-mt-xs" :class="providerStatus.upcitemdb.ok ? 'text-green' : 'text-red'">
               {{ providerStatus.upcitemdb.message }}
             </div>

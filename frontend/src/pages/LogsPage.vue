@@ -1,71 +1,308 @@
 <template>
-  <q-page class="q-pa-md">
+  <q-page class="q-pa-md column">
+    <!-- Header -->
     <div class="row items-center q-mb-md">
       <div class="text-h5">Logs</div>
       <q-space />
-      <q-btn flat icon="refresh" @click="loadLogs" :loading="loading" />
-      <q-btn flat icon="delete" color="negative" @click="confirmClear" :disable="!lines.length" />
+      <q-btn flat round icon="refresh" @click="loadLogs" :loading="loading" />
     </div>
 
     <q-banner v-if="message" class="bg-warning text-white q-mb-md rounded-borders">
       {{ message }}
     </q-banner>
 
-    <q-card flat bordered>
-      <q-card-section v-if="loading">Loading...</q-card-section>
-      <q-card-section v-else-if="!lines.length" class="text-grey">
-        No log entries.
-      </q-card-section>
-      <q-virtual-scroll v-else :items="lines" style="max-height: 60vh" v-slot="{ item }">
-        <div class="log-line q-pa-xs" style="font-family: monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all;">
-          <q-badge v-if="detectLevel(item)" :color="levelColor(detectLevel(item))" class="q-mr-xs">
-            {{ detectLevel(item).toUpperCase() }}
-          </q-badge>
-          {{ stripLevel(item) }}
+    <!-- Toolbar: level filter, search, tail, actions -->
+    <q-card flat bordered class="q-mb-md">
+      <q-card-section class="q-pa-sm row items-center flex-wrap gap-2">
+        <!-- Level filter chips -->
+        <div class="row items-center no-wrap q-gutter-xs">
+          <span class="text-caption text-weight-medium q-mr-xs">Level:</span>
+          <q-btn
+            v-for="lvl in levelOptions"
+            :key="lvl.value"
+            :label="lvl.label"
+            :color="levelFilter === lvl.value ? levelChipColor(lvl.value) : 'grey-7'"
+            :outline="levelFilter !== lvl.value"
+            size="sm"
+            dense
+            no-caps
+            @click="levelFilter = lvl.value"
+          />
         </div>
-      </q-virtual-scroll>
+        <q-separator vertical />
+        <!-- Search -->
+        <q-input
+          v-model="searchQuery"
+          dense
+          outlined
+          placeholder="Search logs..."
+          clearable
+          class="log-search-input"
+          style="min-width: 180px; max-width: 240px"
+        >
+          <template #prepend>
+            <q-icon name="search" size="xs" />
+          </template>
+        </q-input>
+        <q-separator vertical />
+        <!-- Tail / Pause -->
+        <q-btn
+          :icon="tailing ? 'pause' : 'play_arrow'"
+          :label="tailing ? 'Pause' : 'Follow'"
+          :color="tailing ? 'primary' : 'grey-7'"
+          :outline="!tailing"
+          size="sm"
+          dense
+          no-caps
+          @click="tailing = !tailing"
+        />
+        <q-separator vertical />
+        <!-- Rotation: order -->
+        <q-btn
+          :icon="orderNewestFirst ? 'arrow_upward' : 'arrow_downward'"
+          :label="orderNewestFirst ? 'Newest first' : 'Oldest first'"
+          outline
+          size="sm"
+          dense
+          no-caps
+          @click="orderNewestFirst = !orderNewestFirst"
+        />
+        <q-space />
+        <!-- Actions -->
+        <q-btn flat round dense icon="file_download" @click="downloadLogs" :disable="!displayedLines.length" />
+        <q-btn flat round dense icon="content_copy" @click="copyLogs" :disable="!displayedLines.length" />
+        <q-btn flat round dense icon="delete" color="negative" @click="confirmClear" :disable="!rawLines.length" />
+      </q-card-section>
+    </q-card>
+
+    <!-- Log viewer panel -->
+    <q-card flat bordered class="log-viewer-card column flex-grow">
+      <div v-if="logFilePath" class="log-viewer-header row items-center">
+        <span class="text-caption text-grey-7">{{ logFilePath }}</span>
+        <q-space />
+        <span class="text-caption text-grey-7">{{ displayedLines.length }} line(s)</span>
+      </div>
+      <div v-if="loading && !rawLines.length" class="log-viewer-body flex column items-center justify-center">
+        <q-spinner size="md" />
+        <span class="q-mt-sm text-grey-7">Loading...</span>
+      </div>
+      <div v-else-if="!rawLines.length" class="log-viewer-body flex column items-center justify-center text-grey-7">
+        No log entries.
+      </div>
+      <div
+        v-else
+        ref="logScrollRef"
+        class="log-viewer-body"
+        @scroll="onScroll"
+      >
+        <div
+          v-for="(entry, idx) in displayedLines"
+          :key="entry.id"
+          class="log-row"
+          :class="{ 'log-row--match': searchQuery && entry.rawLower.includes(searchQueryLower) }"
+        >
+          <span v-if="entry.timestamp" class="log-ts">{{ entry.timestamp }}</span>
+          <span :class="['log-badge', 'log-badge--' + (entry.level || 'info')]">
+            {{ (entry.level || 'info').toUpperCase() }}
+          </span>
+          <span class="log-msg" v-html="entry.messageHtml" />
+        </div>
+      </div>
+      <!-- Scroll to bottom button when not following and user scrolled up -->
+      <q-btn
+        v-if="!tailing && rawLines.length && !atBottom"
+        flat
+        round
+        dense
+        icon="keyboard_arrow_down"
+        class="scroll-to-bottom-btn"
+        @click="scrollToBottom"
+      >
+        <q-tooltip>Scroll to bottom</q-tooltip>
+      </q-btn>
     </q-card>
   </q-page>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { getLogs, clearLogs } from '../services/api'
 import { useQuasar } from 'quasar'
 
 const $q = useQuasar()
-const lines = ref([])
+const rawLines = ref([])
 const message = ref('')
+const logFilePath = ref(null)
 const loading = ref(false)
+const logScrollRef = ref(null)
+const logBottomRef = ref(null)
+const atBottom = ref(true)
+const tailing = ref(false)
+const levelFilter = ref('all')
+const searchQuery = ref('')
+const orderNewestFirst = ref(false)
+
+const TAIL_INTERVAL_MS = 3000
+let tailIntervalId = null
 
 const levelRegex = /\[(DEBUG|INFO|WARNING|ERROR|CRITICAL)\s*\]|"level"\s*:\s*"(debug|info|warning|error|critical)"/i
+const levelBracketRe = /\[\s*(DEBUG|INFO|WARNING|ERROR|CRITICAL)\s*\]\s*/i
+const timestampRe = /^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\s*/
+
+const levelOptions = [
+  { value: 'all', label: 'All' },
+  { value: 'debug', label: 'DEBUG' },
+  { value: 'info', label: 'INFO' },
+  { value: 'warning', label: 'WARNING' },
+  { value: 'error', label: 'ERROR' },
+  { value: 'critical', label: 'CRITICAL' },
+]
 
 function detectLevel(line) {
   const m = levelRegex.exec(line)
   if (m) return (m[1] || m[2] || '').toLowerCase()
-  return ''
+  return 'info'
 }
 
-function stripLevel(line) {
-  return line.replace(/\[\s*(DEBUG|INFO|WARNING|ERROR|CRITICAL)\s*\]\s*/i, '').trim()
+function stripLevelBracket(line) {
+  return line.replace(levelBracketRe, '').trim()
 }
 
-function levelColor(level) {
-  const colors = { debug: 'grey', info: 'blue', warning: 'orange', error: 'red', critical: 'red' }
+function splitTimestamp(line) {
+  const m = timestampRe.match(line)
+  if (m) return { timestamp: m[1], rest: line.slice(m[0].length).trim() }
+  return { timestamp: '', rest: line }
+}
+
+function escapeHtml(s) {
+  if (!s) return ''
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function highlightSearch(text, query) {
+  if (!query || !query.trim()) return escapeHtml(text)
+  const escaped = escapeHtml(text)
+  const lower = query.trim().toLowerCase()
+  const idx = escaped.toLowerCase().indexOf(lower)
+  if (idx === -1) return escaped
+  const before = escaped.slice(0, idx)
+  const match = escaped.slice(idx, idx + query.trim().length)
+  const after = escaped.slice(idx + query.trim().length)
+  return `${before}<mark class="log-highlight">${match}</mark>${after}`
+}
+
+function levelChipColor(level) {
+  const colors = { all: 'grey', debug: 'grey', info: 'blue', warning: 'orange', error: 'red', critical: 'red' }
   return colors[level] || 'grey'
+}
+
+function parseLine(raw, index) {
+  const level = detectLevel(raw)
+  const stripped = stripLevelBracket(raw)
+  const { timestamp, rest } = splitTimestamp(stripped)
+  const message = rest || stripped || raw
+  return {
+    id: `log-${index}-${raw.slice(0, 40)}`,
+    raw,
+    rawLower: raw.toLowerCase(),
+    level,
+    timestamp,
+    message,
+  }
+}
+
+const searchQueryLower = computed(() => (searchQuery.value || '').trim().toLowerCase())
+
+const parsedLines = computed(() =>
+  rawLines.value.map((line, i) => parseLine(line, i))
+)
+
+const displayedLines = computed(() => {
+  let list = parsedLines.value
+
+  if (levelFilter.value && levelFilter.value !== 'all') {
+    list = list.filter((e) => e.level === levelFilter.value)
+  }
+  if (searchQueryLower.value) {
+    list = list.filter((e) => e.rawLower.includes(searchQueryLower.value))
+  }
+  if (orderNewestFirst.value) {
+    list = [...list].reverse()
+  }
+  return list.map((e) => ({
+    ...e,
+    messageHtml: highlightSearch(e.message, searchQuery.value),
+  }))
+})
+
+function onScroll() {
+  if (!logScrollRef.value) return
+  const el = logScrollRef.value
+  const threshold = 80
+  atBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+}
+
+function scrollToBottom() {
+  nextTick(() => {
+    if (logScrollRef.value) {
+      logScrollRef.value.scrollTop = logScrollRef.value.scrollHeight
+      atBottom.value = true
+    }
+  })
 }
 
 async function loadLogs() {
   loading.value = true
   try {
     const data = await getLogs()
-    lines.value = data.lines || []
+    rawLines.value = data.lines || []
     message.value = data.message || ''
+    logFilePath.value = data.log_file || null
   } catch (e) {
     $q.notify({ type: 'negative', message: e.message || 'Failed to load logs' })
   } finally {
     loading.value = false
   }
+  if (tailing.value) nextTick(scrollToBottom)
+}
+
+watch(tailing, (on) => {
+  if (on) {
+    tailIntervalId = setInterval(loadLogs, TAIL_INTERVAL_MS)
+    nextTick(scrollToBottom)
+  } else {
+    if (tailIntervalId) clearInterval(tailIntervalId)
+    tailIntervalId = null
+  }
+})
+
+function downloadLogs() {
+  if (!displayedLines.value.length) return
+  const text = displayedLines.value.map((e) => e.raw).join('\n')
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `grocyscan-logs-${new Date().toISOString().slice(0, 10)}.txt`
+  a.click()
+  URL.revokeObjectURL(url)
+  $q.notify({ type: 'positive', message: 'Logs downloaded' })
+}
+
+function copyLogs() {
+  if (!displayedLines.value.length) {
+    $q.notify({ type: 'warning', message: 'Nothing to copy' })
+    return
+  }
+  const text = displayedLines.value.map((e) => e.raw).join('\n')
+  navigator.clipboard.writeText(text).then(
+    () => $q.notify({ type: 'positive', message: 'Copied to clipboard' }),
+    () => $q.notify({ type: 'negative', message: 'Copy failed' })
+  )
 }
 
 function confirmClear() {
@@ -77,7 +314,8 @@ function confirmClear() {
   }).onOk(async () => {
     try {
       await clearLogs()
-      lines.value = []
+      rawLines.value = []
+      message.value = ''
       $q.notify({ type: 'positive', message: 'Logs cleared' })
     } catch (e) {
       $q.notify({ type: 'negative', message: e.message || 'Failed to clear logs' })
@@ -86,4 +324,122 @@ function confirmClear() {
 }
 
 onMounted(loadLogs)
+onUnmounted(() => {
+  if (tailIntervalId) clearInterval(tailIntervalId)
+})
 </script>
+
+<style scoped>
+.log-viewer-card {
+  min-height: 0;
+  max-height: calc(100vh - 220px);
+  background: #0f172a;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.log-viewer-header {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.log-viewer-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 16px;
+  font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: #cbd5e1;
+}
+
+.log-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 2px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.06);
+}
+
+.log-row--match {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.log-ts {
+  color: #64748b;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+}
+
+.log-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  min-width: 4.25rem;
+  text-align: center;
+}
+
+.log-badge--debug {
+  background: #475569;
+  color: #e2e8f0;
+}
+
+.log-badge--info {
+  background: #16a34a;
+  color: white;
+}
+
+.log-badge--warning {
+  background: #ca8a04;
+  color: #1e293b;
+}
+
+.log-badge--error {
+  background: #dc2626;
+  color: white;
+}
+
+.log-badge--critical {
+  background: #7f1d1d;
+  color: #fecaca;
+}
+
+.log-msg {
+  flex: 1;
+  min-width: 0;
+}
+
+.log-msg :deep(.log-highlight) {
+  background: rgba(250, 204, 21, 0.4);
+  color: #fef08a;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+.scroll-to-bottom-btn {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  background: rgba(15, 23, 42, 0.9);
+  color: #94a3b8;
+}
+
+.scroll-to-bottom-btn:hover {
+  background: rgba(30, 41, 59, 0.95);
+  color: #e2e8f0;
+}
+
+.log-viewer-card {
+  position: relative;
+}
+</style>

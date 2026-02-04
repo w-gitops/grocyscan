@@ -439,7 +439,8 @@ async def test_lookup_provider(provider: str) -> ProviderTestResponse:
         if hasattr(provider_instance, 'get_api_key'):
             api_key = provider_instance.get_api_key()
             # For providers that need keys, check if set
-            if provider_lower in ['goupc', 'upcitemdb', 'brave'] and not api_key:
+            # Note: upcitemdb works without key (free tier, 100 req/day)
+            if provider_lower in ['goupc', 'brave'] and not api_key:
                 return ProviderTestResponse(
                     success=False,
                     provider=provider,
