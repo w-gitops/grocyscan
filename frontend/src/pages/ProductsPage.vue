@@ -1,5 +1,5 @@
 <template>
-  <q-page class="q-pa-md">
+  <q-page class="q-pa-md" data-testid="products-page">
     <div class="text-h5 q-mb-md">Products</div>
     <q-input
       v-model="search"
@@ -8,18 +8,20 @@
       placeholder="Search products..."
       class="q-mb-md"
       @update:model-value="loadProducts"
+      data-testid="products-search"
     >
       <template v-slot:prepend>
         <q-icon name="search" />
       </template>
     </q-input>
-    <q-card v-if="loading" flat bordered>Loading...</q-card>
-    <q-list v-else-if="products.length" bordered>
+    <q-card v-if="loading" flat bordered data-testid="products-loading">Loading...</q-card>
+    <q-list v-else-if="products.length" bordered data-testid="products-list">
       <q-item
         v-for="p in products"
         :key="p.id"
         clickable
         @click="openDetail(p)"
+        data-testid="product-card"
       >
         <q-item-section>
           <q-item-label>{{ p.name }}</q-item-label>
@@ -27,19 +29,19 @@
         </q-item-section>
       </q-item>
     </q-list>
-    <q-card v-else flat bordered>No products. Add via Scan.</q-card>
+    <q-card v-else flat bordered data-testid="products-empty">No products. Add via Scan.</q-card>
 
     <!-- Detail dialog -->
-    <q-dialog v-model="detailDialog">
+    <q-dialog v-model="detailDialog" data-testid="product-detail-dialog">
       <q-card v-if="selectedProduct" style="min-width: 350px; max-width: 500px">
         <q-card-section>
-          <div class="text-h6">{{ selectedProduct.name }}</div>
+          <div class="text-h6" data-testid="product-detail-name">{{ selectedProduct.name }}</div>
           <div class="text-caption text-grey q-mb-sm">{{ selectedProduct.description || '' }}</div>
           <div class="text-caption">Category: {{ selectedProduct.category || '-' }}</div>
           <!-- Barcodes -->
-          <div v-if="(selectedProduct.barcodes || []).length" class="q-mt-xs">
+          <div v-if="(selectedProduct.barcodes || []).length" class="q-mt-xs" data-testid="product-barcodes-list">
             <div class="text-caption text-weight-medium">Barcodes</div>
-            <q-chip v-for="bc in (selectedProduct.barcodes || [])" :key="bc" dense size="sm" removable @remove="removeBarcode(bc)">
+            <q-chip v-for="bc in (selectedProduct.barcodes || [])" :key="bc" dense size="sm" removable @remove="removeBarcode(bc)" data-testid="product-barcode-chip">
               {{ bc }}
             </q-chip>
           </div>
@@ -145,22 +147,22 @@
         </q-card-section>
 
         <q-card-actions align="right">
-          <q-btn flat label="Edit" color="primary" @click="openEdit" />
-          <q-btn flat label="Close" v-close-popup />
+          <q-btn flat label="Edit" color="primary" @click="openEdit" data-testid="product-edit-button" />
+          <q-btn flat label="Close" v-close-popup data-testid="product-detail-close" />
         </q-card-actions>
       </q-card>
     </q-dialog>
 
     <!-- Edit dialog -->
-    <q-dialog v-model="editDialog">
+    <q-dialog v-model="editDialog" data-testid="product-edit-dialog">
       <q-card style="min-width: 320px">
         <q-card-section>
           <div class="text-h6">Edit Product</div>
         </q-card-section>
         <q-card-section>
-          <q-input v-model="editForm.name" label="Name" outlined dense class="q-mb-sm" />
-          <q-input v-model="editForm.description" label="Description" outlined dense class="q-mb-sm" />
-          <q-input v-model="editForm.category" label="Category" outlined dense class="q-mb-sm" />
+          <q-input v-model="editForm.name" label="Name" outlined dense class="q-mb-sm" data-testid="product-name-input" />
+          <q-input v-model="editForm.description" label="Description" outlined dense class="q-mb-sm" data-testid="product-description-input" />
+          <q-input v-model="editForm.category" label="Category" outlined dense class="q-mb-sm" data-testid="product-category-input" />
           <div class="text-caption q-mb-xs">Barcodes</div>
           <div class="row q-gutter-xs q-mb-sm">
             <q-chip v-for="bc in (editForm.barcodes || [])" :key="bc" dense size="sm" removable @remove="removeBarcodeInEdit(bc)">
@@ -168,13 +170,13 @@
             </q-chip>
           </div>
           <div class="row q-gutter-sm">
-            <q-input v-model="newBarcode" dense outlined label="Add barcode" class="col" placeholder="Scan or type" @keydown.enter.prevent="addBarcodeInEdit" />
-            <q-btn icon="add" flat round dense color="primary" @click="addBarcodeInEdit" />
+            <q-input v-model="newBarcode" dense outlined label="Add barcode" class="col" placeholder="Scan or type" @keydown.enter.prevent="addBarcodeInEdit" data-testid="product-barcode-input" />
+            <q-btn icon="add" flat round dense color="primary" @click="addBarcodeInEdit" data-testid="product-add-barcode-button" />
           </div>
         </q-card-section>
         <q-card-actions align="right">
-          <q-btn flat label="Cancel" v-close-popup />
-          <q-btn flat label="Save" color="primary" @click="saveEdit" :loading="saving" />
+          <q-btn flat label="Cancel" v-close-popup data-testid="product-cancel-button" />
+          <q-btn flat label="Save" color="primary" @click="saveEdit" :loading="saving" data-testid="product-save-button" />
         </q-card-actions>
       </q-card>
     </q-dialog>

@@ -1,13 +1,13 @@
 <template>
-  <q-page class="q-pa-md">
+  <q-page class="q-pa-md" data-testid="settings-page">
     <div class="text-h5 q-mb-md">Settings</div>
 
-    <q-tabs v-model="tab" dense align="left" class="q-mb-md">
-      <q-tab name="grocy" label="Grocy" />
-      <q-tab name="llm" label="LLM" />
-      <q-tab name="lookup" label="Lookup" />
-      <q-tab name="scanning" label="Scanning" />
-      <q-tab name="ui" label="UI" />
+    <q-tabs v-model="tab" dense align="left" class="q-mb-md" data-testid="settings-tabs">
+      <q-tab name="grocy" label="Grocy" data-testid="settings-tab-grocy" />
+      <q-tab name="llm" label="LLM" data-testid="settings-tab-llm" />
+      <q-tab name="lookup" label="Lookup" data-testid="settings-tab-lookup" />
+      <q-tab name="scanning" label="Scanning" data-testid="settings-tab-scanning" />
+      <q-tab name="ui" label="UI" data-testid="settings-tab-ui" />
     </q-tabs>
 
     <q-tab-panels v-model="tab" animated>
