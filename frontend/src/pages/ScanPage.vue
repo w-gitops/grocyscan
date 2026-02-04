@@ -54,7 +54,7 @@
         </div>
 
         <!-- Camera preview -->
-        <div v-show="cameraActive" id="scanner-container" class="q-mb-sm" style="width: 100%; max-width: 400px; margin: 0 auto;"></div>
+        <div v-show="cameraActive" id="scanner-container" class="q-mb-sm" style="width: 100%; max-width: 400px; min-height: 300px; margin: 0 auto; background: #000;"></div>
 
         <q-input
           v-model="barcode"
@@ -171,7 +171,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useDeviceStore } from '../stores/device'
 import {
   getMeDevice,
@@ -273,6 +273,10 @@ async function toggleCamera() {
 
 async function startCamera() {
   try {
+    // Show the container first so html5-qrcode can find it
+    cameraActive.value = true
+    await nextTick()
+    
     html5QrCode = new Html5Qrcode('scanner-container')
     await html5QrCode.start(
       { facingMode: 'environment' },
@@ -280,8 +284,9 @@ async function startCamera() {
       onCameraScan,
       () => {} // ignore errors during scanning
     )
-    cameraActive.value = true
   } catch (e) {
+    cameraActive.value = false
+    console.error('Camera error:', e)
     $q.notify({ type: 'negative', message: 'Camera access denied or not available. HTTPS required.' })
   }
 }
