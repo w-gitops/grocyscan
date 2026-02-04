@@ -2,6 +2,7 @@
 
 import logging
 import sys
+from pathlib import Path
 from typing import Any
 
 import structlog
@@ -100,11 +101,22 @@ def configure_logging() -> None:
     root_logger.addHandler(console_handler)
 
     # Add file handler if configured
-    if settings.log_file:
-        file_handler = logging.FileHandler(settings.log_file)
-        file_handler.setLevel(log_level)
-        file_handler.setFormatter(logging.Formatter("%(message)s"))
-        root_logger.addHandler(file_handler)
+    if settings.log_file and settings.log_file.strip():
+        log_path = Path(settings.log_file.strip())
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            file_handler = logging.FileHandler(log_path, encoding="utf-8")
+            file_handler.setLevel(log_level)
+            file_handler.setFormatter(logging.Formatter("%(message)s"))
+            root_logger.addHandler(file_handler)
+        except OSError:
+            # Do not fail startup if log file cannot be created
+            import warnings
+            warnings.warn(
+                f"Cannot create log file {log_path}. In-app log viewer will be empty.",
+                UserWarning,
+                stacklevel=2,
+            )
 
     # Suppress noisy loggers
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)

@@ -195,6 +195,7 @@ import {
   patchMeDevice,
   getProductByBarcode,
   scanBarcode,
+  confirmScan,
   addStock,
   consumeStock,
   getMeLocations,
@@ -437,22 +438,44 @@ async function onLookup() {
 }
 
 async function confirmReview() {
-  if (!reviewData.value.found || !reviewData.value.product_id) return
+  if (!reviewData.value.found) return
   reviewLoading.value = true
-  const fp = await deviceStore.ensureFingerprint()
   try {
-    const qty = reviewData.value.quantity || 1
-    const locId = reviewData.value.location_id || null
-    if (actionMode.value === 'consume') {
-      await consumeStock(fp, reviewData.value.product_id, qty, locId)
-      $q.notify({ type: 'positive', message: `Consumed ${qty}` })
+    // Use the scan confirm endpoint which handles Grocy integration
+    if (reviewData.value.scan_id) {
+      const result = await confirmScan(reviewData.value.scan_id, {
+        name: reviewData.value.name,
+        description: reviewData.value.description,
+        category: reviewData.value.category,
+        brand: reviewData.value.brand,
+        quantity: reviewData.value.quantity || 1,
+        create_in_grocy: true,
+        use_llm_enhancement: false,
+      })
+      if (result.success) {
+        $q.notify({ type: 'positive', message: result.message || 'Added to inventory' })
+        addRecentScan(reviewData.value.barcode, reviewData.value.name, true)
+        reviewDialog.value = false
+        barcode.value = ''
+      } else {
+        throw new Error(result.message || 'Failed to add product')
+      }
     } else {
-      await addStock(fp, reviewData.value.product_id, qty, locId)
-      $q.notify({ type: 'positive', message: `Added ${qty}` })
+      // Fallback for direct product operations (when we have a HomeBot product_id)
+      const fp = await deviceStore.ensureFingerprint()
+      const qty = reviewData.value.quantity || 1
+      const locId = reviewData.value.location_id || null
+      if (actionMode.value === 'consume') {
+        await consumeStock(fp, reviewData.value.product_id, qty, locId)
+        $q.notify({ type: 'positive', message: `Consumed ${qty}` })
+      } else {
+        await addStock(fp, reviewData.value.product_id, qty, locId)
+        $q.notify({ type: 'positive', message: `Added ${qty}` })
+      }
+      addRecentScan(reviewData.value.barcode, reviewData.value.name, true)
+      reviewDialog.value = false
+      barcode.value = ''
     }
-    addRecentScan(reviewData.value.barcode, reviewData.value.name, true)
-    reviewDialog.value = false
-    barcode.value = ''
   } catch (e) {
     $q.notify({ type: 'negative', message: e.message || 'Action failed' })
     addRecentScan(reviewData.value.barcode, reviewData.value.name, false)

@@ -95,6 +95,24 @@ export async function scanBarcode(barcode, skipCache = false) {
   return res.json()
 }
 
+export async function confirmScan(scanId, { name, description, category, brand, quantity, create_in_grocy = true, use_llm_enhancement = false }) {
+  const res = await apiFetch(`/api/scan/${scanId}/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name,
+      description,
+      category,
+      brand,
+      quantity,
+      create_in_grocy,
+      use_llm_enhancement,
+    }),
+  })
+  if (!res.ok) throw apiErrorFromResponse(res, await res.text())
+  return res.json()
+}
+
 export async function getMeProducts(deviceId, q = '') {
   const url = q ? `/api/me/products?q=${encodeURIComponent(q)}` : '/api/me/products'
   const res = await apiFetch(url, { headers: { 'X-Device-ID': deviceId } })

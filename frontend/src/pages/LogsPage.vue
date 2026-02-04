@@ -88,7 +88,13 @@
         <span class="q-mt-sm">Loading...</span>
       </div>
       <div v-else-if="!rawLines.length" class="log-viewer-body log-viewer-body--empty">
-        No log entries.
+        <span class="text-weight-medium">No log entries.</span>
+        <p v-if="message" class="log-viewer-empty-hint">{{ message }}</p>
+        <p v-else class="log-viewer-empty-hint">Set LOG_FILE on the server (e.g. /opt/grocyscan/logs/app.log) and restart the service to capture logs here.</p>
+      </div>
+      <div v-else-if="!displayedLines.length" class="log-viewer-body log-viewer-body--empty">
+        <span class="text-weight-medium">No lines match the current filters.</span>
+        <p class="log-viewer-empty-hint">Try "All" levels or clear the search.</p>
       </div>
       <div
         v-else
@@ -377,6 +383,16 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   color: #94a3b8;
+  text-align: center;
+  padding: 24px;
+}
+
+.log-viewer-empty-hint {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
+  max-width: 420px;
+  line-height: 1.4;
 }
 
 .log-row {
