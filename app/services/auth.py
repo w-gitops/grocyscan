@@ -4,9 +4,8 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 import bcrypt
-from pydantic import BaseModel
-
-from pydantic import SecretStr
+from jose import JWTError, jwt
+from pydantic import BaseModel, SecretStr
 
 from app.config import settings
 from app.core.exceptions import AuthenticationError
@@ -163,6 +162,19 @@ def verify_password(password: str, password_hash: str) -> bool:
         return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
     except Exception:
         return False
+
+
+def decode_jwt(token: str) -> dict | None:
+    """Decode and validate JWT; return payload or None."""
+    try:
+        payload = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=["HS256"],
+        )
+        return payload
+    except JWTError:
+        return None
 
 
 def get_auth_password_hash() -> str:
