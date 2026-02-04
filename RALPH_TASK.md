@@ -1,40 +1,46 @@
 ---
-task: Homebot Phase 3 - Device & UI
-test_command: pytest tests/phase3/ tests/phase2/ tests/phase1/ -v --tb=short
-browser_validation: false
+task: Homebot Phase 3.5 - Inventory Parity
+test_command: pytest tests/phase3_5/ tests/phase3/ tests/phase2/ -v --tb=short
+browser_validation: true
+browser_url: http://localhost:3335
 ---
 
-# Task: Homebot Phase 3 - Device & UI
+# Task: Homebot Phase 3.5 - Inventory Parity
 
-Device registration, preferences, and UI (Vue/Quasar or NiceGUI validation).
+Full Grocy inventory parity - quantity units, stock operations, location UI, undo.
 
-**PRD Reference:** [prd/80.13-ralph-phase-3-device-ui.md](prd/80.13-ralph-phase-3-device-ui.md)
+**PRD Reference:** [prd/80.135-ralph-phase-3.5-inventory-parity.md](prd/80.135-ralph-phase-3.5-inventory-parity.md)
 
 ## Success Criteria
 
-### Frontend Scaffold
+### Database Schema (Migration 0011)
 
-- [x] **[1]** Vue 3 + Quasar project initialized (Option B) or use NiceGUI (Option A)
-- [x] **[2]** Pinia store configured (auth, device)
-- [x] **[3]** Router with auth guards
+- [x] **[1]** Quantity units table and product quantity unit FKs
+- [x] **[2]** Product best-before settings
+- [x] **[3]** Product advanced fields
+- [x] **[4]** Stock entry enhancements (decimal qty, stock_id, price, open, note)
+- [x] **[5]** Transaction log enhancements (user_id, correlation_id, undone)
+- [x] **[6]** Product groups table
 
-### Device Management
+### Stock Operations API
 
-- [x] **[4]** Device registration on first visit <!-- POST /api/v2/devices -->
-- [x] **[5]** Device preferences stored <!-- PATCH /api/v2/devices/me -->
-- [x] **[6]** Device fingerprinting <!-- X-Device-ID, same fingerprint = same device -->
+- [x] **[7]** Inventory operation (set stock to specific amount)
+- [x] **[8]** Open product operation
+- [x] **[9]** Edit stock entry
+- [x] **[10]** Undo operation
+- [ ] **[11]** Freezer auto-adjust best-before dates
 
-### Scanning Interface
+### Location Management UI (Vue/Quasar)
 
-- [x] **[7]** Camera barcode scanner works
-- [x] **[8]** Action mode selection
-- [x] **[9]** Quick actions after scan
+- [x] **[12]** Location list with hierarchy
+- [x] **[13]** Location CRUD in UI (edit/delete)
+- [x] **[14]** Reorder locations
 
-### Product Views
+### Stock Entry UI (Vue/Quasar)
 
-- [x] **[10]** Product list with search
-- [x] **[11]** Product detail view
-- [x] **[12]** PWA installable
+- [ ] **[15]** View stock entries for product
+- [ ] **[16]** Move stock dialog
+- [ ] **[17]** Inventory correction dialog
 
 ---
 
@@ -42,14 +48,8 @@ Device registration, preferences, and UI (Vue/Quasar or NiceGUI validation).
 
 - **Deploy Target:** `192.168.200.37` via SSH (root)
 - **Install Path:** `/opt/grocyscan/`
-- **Port:** 3334 (API), 3335 (Vue target)
-- **Option A:** Validate with existing NiceGUI at :3334 first.
-- **Option B:** Build Vue/Quasar frontend at :3335.
-
-## Technical Notes
-
-- Migration 0006: homebot.devices (fingerprint, default_location_id, default_action, preferences).
-- v2 API: POST /api/v2/devices (register), GET/PATCH /api/v2/devices/me (X-Device-ID required for me).
+- **Port:** 3334 (API), 3335 (Vue dev)
+- **Public URL:** `https://grocyscan.ssiops.com`
 
 ## Phase Navigation
 
@@ -57,8 +57,6 @@ Device registration, preferences, and UI (Vue/Quasar or NiceGUI validation).
 |-------|----------|--------|
 | 1 | [Foundation](prd/80.11-ralph-phase-1-foundation.md) | Complete |
 | 2 | [Inventory](prd/80.12-ralph-phase-2-inventory.md) | Complete |
-| 3 | [Device & UI](prd/80.13-ralph-phase-3-device-ui.md) | **Current** |
+| 3 | [Device & UI](prd/80.13-ralph-phase-3-device-ui.md) | Complete |
+| 3.5 | [Inventory Parity](prd/80.135-ralph-phase-3.5-inventory-parity.md) | **Current** |
 | 4 | [Labels & QR](prd/80.14-ralph-phase-4-labels-qr.md) | Pending |
-| 5 | [Recipes](prd/80.15-ralph-phase-5-recipes.md) | Pending |
-| 6 | [Intelligence](prd/80.16-ralph-phase-6-intelligence.md) | Pending |
-| 7 | [Documents](prd/80.17-ralph-phase-7-documents.md) | Pending |

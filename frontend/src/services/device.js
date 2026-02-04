@@ -1,6 +1,6 @@
 /**
  * Generate a stable device fingerprint for X-Device-ID (browser).
- * Same approach as NiceGUI: UA + language + timezone; no PII.
+ * Device fingerprinting: UA + language + timezone; no PII.
  */
 export function getDeviceFingerprint() {
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''

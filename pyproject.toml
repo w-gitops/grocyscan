@@ -10,7 +10,6 @@ dependencies = [
     # Web Framework
     "fastapi>=0.109.0",
     "uvicorn[standard]>=0.27.0",
-    "nicegui>=1.4.0",
     
     # Database
     "sqlalchemy[asyncio]>=2.0.25",
