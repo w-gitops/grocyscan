@@ -146,9 +146,17 @@ def client(db_session: AsyncSession) -> Generator[TestClient, None, None]:
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
         yield db_session
 
+    from app.config import settings as app_settings
+
     app.dependency_overrides[get_db] = override_get_db
+    previous_env = app_settings.grocyscan_env
+    previous_auth_enabled = app_settings.auth_enabled
+    app_settings.grocyscan_env = "production"
+    app_settings.auth_enabled = False
     with TestClient(app) as c:
         yield c
+    app_settings.grocyscan_env = previous_env
+    app_settings.auth_enabled = previous_auth_enabled
     app.dependency_overrides.clear()
 
 

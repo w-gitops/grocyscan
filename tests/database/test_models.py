@@ -211,6 +211,6 @@ async def test_user_product_relationship(db_session: AsyncSession) -> None:
     await db_session.flush()
 
     # Refresh user to load relationships
-    await db_session.refresh(user)
+    await db_session.refresh(user, ["products"])
 
     assert len(user.products) == 2
