@@ -133,14 +133,14 @@ async def test_add_stock_list_stock_consume(client, auth_headers, tenant_id):
         json={"product_id": product_id, "location_id": location_id, "quantity": 5},
     )
     assert add_r.status_code == 200
-    assert add_r.json()["quantity"] == 5
+    assert float(add_r.json()["quantity"]) == 5
 
     # List stock
     stock_r = await client.get("/api/v2/stock", headers=headers)
     assert stock_r.status_code == 200
     entries = [e for e in stock_r.json() if e["product_id"] == product_id]
     assert len(entries) == 1
-    assert entries[0]["quantity"] == 5
+    assert float(entries[0]["quantity"]) == 5
     assert entries[0]["product_name"] == "Stock Test Product"
 
     # Consume 2
@@ -155,7 +155,7 @@ async def test_add_stock_list_stock_consume(client, auth_headers, tenant_id):
     stock_r2 = await client.get("/api/v2/stock", headers=headers)
     entries2 = [e for e in stock_r2.json() if e["product_id"] == product_id]
     assert len(entries2) == 1
-    assert entries2[0]["quantity"] == 3
+    assert float(entries2[0]["quantity"]) == 3
 
 
 @pytest.mark.asyncio
