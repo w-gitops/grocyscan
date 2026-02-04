@@ -71,7 +71,7 @@ async def login(data: LoginRequest) -> LoginResponse:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
-    stored_hash = get_auth_password_hash()
+    stored_hash = get_auth_password_hash(settings.auth_password_hash.get_secret_value())
     if not stored_hash or not verify_password(data.password, stored_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

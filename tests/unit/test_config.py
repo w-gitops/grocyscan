@@ -6,7 +6,7 @@ from app.config import Settings
 def test_default_settings() -> None:
     """Test default settings values."""
     settings = Settings()
-    assert settings.grocyscan_version == "0.1.0-alpha"
+    assert settings.grocyscan_version == "0.3.4-alpha"
     assert settings.grocyscan_env == "development"
     assert settings.grocyscan_port == 3334
 

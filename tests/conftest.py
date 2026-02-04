@@ -59,6 +59,7 @@ async def test_engine() -> AsyncGenerator[Any, None]:
     engine = create_async_engine(
         TEST_DATABASE_URL,
         echo=False,
+        execution_options={"schema_translate_map": {"homebot": None}},
     )
 
     async with engine.begin() as conn:

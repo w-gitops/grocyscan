@@ -177,7 +177,7 @@ def decode_jwt(token: str) -> dict | None:
         return None
 
 
-def get_auth_password_hash() -> str:
+def get_auth_password_hash(fallback_hash: str | None = None) -> str:
     """Get the effective password hash (settings file overrides env)."""
     try:
         from app.services.settings import settings_service
@@ -188,6 +188,8 @@ def get_auth_password_hash() -> str:
     except Exception:
         # Fall back to env-based settings
         pass
+    if fallback_hash is not None:
+        return fallback_hash
     return settings.auth_password_hash.get_secret_value()
 
 
