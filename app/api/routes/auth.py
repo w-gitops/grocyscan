@@ -34,14 +34,25 @@ class LogoutResponse(BaseModel):
 
 
 def _set_session_cookie(response: Response, session_id: str) -> None:
-    """Set session_id cookie on response."""
+    """Set session cookie on response."""
     response.set_cookie(
-        key="session_id",
+        key=settings.session_cookie_name,
         value=session_id,
-        httponly=True,
-        secure=settings.is_production,
-        samesite="strict",
+        httponly=settings.session_cookie_httponly,
+        secure=settings.session_cookie_secure_resolved,
+        samesite=settings.session_cookie_samesite,
         max_age=settings.session_absolute_timeout_days * 24 * 60 * 60,
+        domain=settings.session_cookie_domain_resolved,
+        path="/",
+    )
+
+
+def _clear_session_cookie(response: Response) -> None:
+    """Clear session cookie on response."""
+    response.delete_cookie(
+        settings.session_cookie_name,
+        domain=settings.session_cookie_domain_resolved,
+        path="/",
     )
 
 
@@ -92,13 +103,13 @@ async def logout(request: Request, response: Response) -> LogoutResponse:
     Returns:
         LogoutResponse: Logout confirmation
     """
-    session_id = request.cookies.get("session_id")
+    session_id = request.cookies.get(settings.session_cookie_name)
 
     if session_id:
         logout_user(session_id)
 
     # Clear session cookie
-    response.delete_cookie("session_id")
+    _clear_session_cookie(response)
 
     return LogoutResponse(
         success=True,

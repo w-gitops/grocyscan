@@ -64,8 +64,8 @@ async def fetch_logs(
     request: "Request | None" = None,
 ) -> tuple[list[str], str | None, str | None]:
     """Fetch log lines from the API. Returns (lines, error_message, log_file_path)."""
-    session_id = request.cookies.get("session_id") if request else None
-    cookies = {"session_id": session_id} if session_id else {}
+    session_id = request.cookies.get(settings.session_cookie_name) if request else None
+    cookies = {settings.session_cookie_name: session_id} if session_id else {}
     try:
         async with httpx.AsyncClient(timeout=10, cookies=cookies) as client:
             response = await client.get(f"{API_BASE}/logs")
@@ -230,8 +230,8 @@ async def render(request: "Request | None" = None) -> None:
                 ui.notify("Copied to clipboard")
 
             async def clear_log_file() -> None:
-                session_id = request.cookies.get("session_id") if request else None
-                cookies = {"session_id": session_id} if session_id else {}
+                session_id = request.cookies.get(settings.session_cookie_name) if request else None
+                cookies = {settings.session_cookie_name: session_id} if session_id else {}
 
                 async def on_confirm_clear() -> None:
                     try:

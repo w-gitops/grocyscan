@@ -59,7 +59,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # Get session cookie
-        session_id = request.cookies.get("session_id")
+        session_id = request.cookies.get(settings.session_cookie_name)
         if not session_id:
             # For API requests without session, return 401
             if request.url.path.startswith("/api/"):
@@ -77,7 +77,11 @@ class SessionMiddleware(BaseHTTPMiddleware):
             # Invalid or expired session
             response = await call_next(request)
             # Clear the invalid session cookie
-            response.delete_cookie("session_id")
+            response.delete_cookie(
+                settings.session_cookie_name,
+                domain=settings.session_cookie_domain_resolved,
+                path="/",
+            )
             return response
 
         # Attach user info to request
