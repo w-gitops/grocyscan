@@ -15,6 +15,20 @@ if TYPE_CHECKING:
     pass
 
 
+class HomebotTenant(Base):
+    """Tenant in homebot schema (minimal ORM so FK from devices/products/etc. resolve)."""
+
+    __tablename__ = "tenants"
+    __table_args__ = {"schema": "homebot"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(100), nullable=False)
+    settings: Mapped[dict | None] = mapped_column(JSON, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class HomebotProduct(Base):
     """Product in homebot schema."""
 
@@ -137,7 +151,8 @@ class HomebotDevice(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.tenants.id"), nullable=False)
-    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.users.id"))
+    # user_id references homebot.users.id in DB; no ORM FK so we don't need HomebotUser mapped
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     fingerprint: Mapped[str] = mapped_column(String(255), nullable=False)
     device_type: Mapped[str] = mapped_column(String(50), nullable=False)
