@@ -1,12 +1,19 @@
 """Authentication endpoints."""
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.core.exceptions import AuthenticationError
-from app.services.auth import authenticate_user, logout_user
+from app.services.auth import (
+    authenticate_user,
+    get_auth_password_hash,
+    hash_password,
+    logout_user,
+    set_auth_password_hash,
+    verify_password,
+)
 
 router = APIRouter()
 
@@ -28,6 +35,21 @@ class LoginResponse(BaseModel):
 
 class LogoutResponse(BaseModel):
     """Logout response model."""
+
+    success: bool
+    message: str
+
+
+class PasswordChangeRequest(BaseModel):
+    """Password change request."""
+
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+    confirm_password: str | None = Field(None, min_length=8)
+
+
+class PasswordChangeResponse(BaseModel):
+    """Password change response."""
 
     success: bool
     message: str
@@ -104,6 +126,42 @@ async def logout(request: Request, response: Response) -> LogoutResponse:
         success=True,
         message="Logged out successfully",
     )
+
+
+@router.post("/password", response_model=PasswordChangeResponse)
+async def change_password(request: Request, body: PasswordChangeRequest) -> PasswordChangeResponse:
+    """Change the current user's password (session auth)."""
+    if not settings.auth_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Authentication is disabled",
+        )
+    if not getattr(request.state, "user_id", None):
+        raise AuthenticationError("Not authenticated")
+    stored_hash = get_auth_password_hash()
+    if not stored_hash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Authentication not configured",
+        )
+    if not verify_password(body.current_password, stored_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+    if body.confirm_password is not None and body.new_password != body.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password confirmation does not match",
+        )
+    if verify_password(body.new_password, stored_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different",
+        )
+    new_hash = hash_password(body.new_password)
+    set_auth_password_hash(new_hash)
+    return PasswordChangeResponse(success=True, message="Password updated")
 
 
 @router.get("/me")

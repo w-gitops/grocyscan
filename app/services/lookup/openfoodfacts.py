@@ -1,5 +1,6 @@
 """OpenFoodFacts barcode lookup provider."""
 
+import inspect
 import time
 from typing import Any
 
@@ -34,10 +35,12 @@ class OpenFoodFactsProvider(BaseLookupProvider):
     name = "openfoodfacts"
 
     def __init__(self) -> None:
-        pass  # Settings read dynamically
+        self.enabled: bool | None = None  # Optional test override
 
     def is_enabled(self) -> bool:
         """Check if OpenFoodFacts is enabled."""
+        if self.enabled is not None:
+            return self.enabled
         return _get_settings().openfoodfacts_enabled
 
     @property
@@ -95,6 +98,8 @@ class OpenFoodFactsProvider(BaseLookupProvider):
 
                 response.raise_for_status()
                 data = response.json()
+                if inspect.isawaitable(data):
+                    data = await data
 
                 if data.get("status") != 1:
                     logger.debug(
