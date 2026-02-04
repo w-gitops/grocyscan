@@ -183,6 +183,57 @@ class HomebotStockTransaction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class HomebotQrNamespace(Base):
+    """QR namespace in homebot schema."""
+
+    __tablename__ = "qr_namespaces"
+    __table_args__ = {"schema": "homebot"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.tenants.id"), nullable=False)
+    code: Mapped[str] = mapped_column(String(4), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(255))
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class HomebotServiceAccount(Base):
+    """Service account in homebot schema."""
+
+    __tablename__ = "service_accounts"
+    __table_args__ = {"schema": "homebot"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.tenants.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    tokens: Mapped[list["HomebotServiceToken"]] = relationship("HomebotServiceToken", back_populates="service_account")
+
+
+class HomebotServiceToken(Base):
+    """Service token (bcrypt-hashed) in homebot schema."""
+
+    __tablename__ = "service_tokens"
+    __table_args__ = {"schema": "homebot"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    service_account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("homebot.service_accounts.id"),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    scopes: Mapped[list[str] | None] = mapped_column(
+        ARRAY(Text).with_variant(SA_JSON, "sqlite")
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    service_account: Mapped["HomebotServiceAccount"] = relationship("HomebotServiceAccount", back_populates="tokens")
+
+
 class HomebotDevice(Base):
     """Device registration and preferences in homebot schema (Phase 3)."""
 

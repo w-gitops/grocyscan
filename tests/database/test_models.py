@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
@@ -210,7 +211,8 @@ async def test_user_product_relationship(db_session: AsyncSession) -> None:
     db_session.add_all([product1, product2])
     await db_session.flush()
 
-    # Refresh user to load relationships
-    await db_session.refresh(user, ["products"])
-
-    assert len(user.products) == 2
+    result = await db_session.execute(
+        select(User).options(selectinload(User.products)).where(User.id == user.id)
+    )
+    refreshed_user = result.scalar_one()
+    assert len(refreshed_user.products) == 2

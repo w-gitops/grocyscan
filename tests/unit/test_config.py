@@ -1,12 +1,22 @@
 """Tests for application configuration."""
 
+import tomllib
+from pathlib import Path
+
 from app.config import Settings
+
+
+def _pyproject_version() -> str:
+    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    with open(pyproject, "rb") as f:
+        data = tomllib.load(f)
+    return data["project"]["version"]
 
 
 def test_default_settings() -> None:
     """Test default settings values."""
     settings = Settings()
-    assert settings.grocyscan_version == "0.3.4-alpha"
+    assert settings.grocyscan_version == _pyproject_version()
     assert settings.grocyscan_env == "development"
     assert settings.grocyscan_port == 3334
 

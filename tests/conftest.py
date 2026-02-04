@@ -1,36 +1,35 @@
 """Pytest fixtures and configuration."""
 
-import asyncio
+import os
 from collections.abc import AsyncGenerator, Generator
+from pathlib import Path
 from typing import Any
 
 import pytest
 import pytest_asyncio
+from alembic import command
+from alembic.config import Config
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+TEST_DATABASE_URL = os.environ.get("DATABASE_URL", "")
+USE_POSTGRES = "postgresql" in TEST_DATABASE_URL
+if not USE_POSTGRES:
+    TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+else:
+    os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+
+# Ensure app settings pick up test env before import.
+os.environ.setdefault("AUTH_ENABLED", "false")
+
 from app.config import Settings
 from app.db.database import Base, get_db
 from app.main import app
 
-
-# Test database URL (SQLite for testing)
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
-
-
-@pytest.fixture(scope="session")
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
-    """Create an event loop for the test session.
-
-    Yields:
-        asyncio.AbstractEventLoop: Event loop instance
-    """
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+ROOT_DIR = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -78,6 +77,19 @@ def test_settings() -> Settings:
     )
 
 
+@pytest.fixture(scope="session", autouse=True)
+def migrate_database() -> Generator[None, None, None]:
+    """Apply Alembic migrations for Postgres tests."""
+    if not USE_POSTGRES:
+        yield
+        return
+    config = Config(str(ROOT_DIR / "alembic.ini"))
+    config.set_main_option("sqlalchemy.url", TEST_DATABASE_URL)
+    command.upgrade(config, "head")
+    yield
+    command.downgrade(config, "base")
+
+
 @pytest_asyncio.fixture(scope="session")
 async def test_engine() -> AsyncGenerator[Any, None]:
     """Create test database engine.
@@ -85,6 +97,12 @@ async def test_engine() -> AsyncGenerator[Any, None]:
     Yields:
         AsyncEngine: Test database engine
     """
+    if USE_POSTGRES:
+        engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+        yield engine
+        await engine.dispose()
+        return
+
     engine = create_async_engine(
         TEST_DATABASE_URL,
         echo=False,
@@ -102,11 +120,7 @@ async def test_engine() -> AsyncGenerator[Any, None]:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
     yield engine
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
 
     await engine.dispose()
 
