@@ -1,6 +1,6 @@
 <template>
-  <q-page class="q-pa-md column">
-    <!-- Header -->
+  <q-page class="logs-page q-pa-md">
+    <!-- Page header -->
     <div class="row items-center q-mb-md">
       <div class="text-h5">Logs</div>
       <q-space />
@@ -11,12 +11,11 @@
       {{ message }}
     </q-banner>
 
-    <!-- Toolbar: level filter, search, tail, actions -->
-    <q-card flat bordered class="q-mb-md">
-      <q-card-section class="q-pa-sm row items-center flex-wrap gap-2">
-        <!-- Level filter chips -->
-        <div class="row items-center no-wrap q-gutter-xs">
-          <span class="text-caption text-weight-medium q-mr-xs">Level:</span>
+    <!-- Toolbar -->
+    <q-card flat bordered class="logs-toolbar q-mb-md">
+      <q-card-section class="q-py-sm q-px-md row items-center flex-wrap">
+        <div class="row items-center q-gutter-xs flex-wrap">
+          <span class="text-caption text-weight-medium">Level:</span>
           <q-btn
             v-for="lvl in levelOptions"
             :key="lvl.value"
@@ -29,23 +28,21 @@
             @click="levelFilter = lvl.value"
           />
         </div>
-        <q-separator vertical />
-        <!-- Search -->
+        <q-separator vertical class="q-mx-sm" />
         <q-input
           v-model="searchQuery"
           dense
           outlined
-          placeholder="Search logs..."
+          placeholder="Search..."
           clearable
           class="log-search-input"
-          style="min-width: 180px; max-width: 240px"
+          style="min-width: 140px; max-width: 200px"
         >
           <template #prepend>
             <q-icon name="search" size="xs" />
           </template>
         </q-input>
-        <q-separator vertical />
-        <!-- Tail / Pause -->
+        <q-separator vertical class="q-mx-sm" />
         <q-btn
           :icon="tailing ? 'pause' : 'play_arrow'"
           :label="tailing ? 'Pause' : 'Follow'"
@@ -56,37 +53,41 @@
           no-caps
           @click="tailing = !tailing"
         />
-        <q-separator vertical />
-        <!-- Rotation: order -->
         <q-btn
           :icon="orderNewestFirst ? 'arrow_upward' : 'arrow_downward'"
-          :label="orderNewestFirst ? 'Newest first' : 'Oldest first'"
+          :label="orderNewestFirst ? 'Newest' : 'Oldest'"
           outline
           size="sm"
           dense
           no-caps
+          class="q-ml-xs"
           @click="orderNewestFirst = !orderNewestFirst"
         />
         <q-space />
-        <!-- Actions -->
-        <q-btn flat round dense icon="file_download" @click="downloadLogs" :disable="!displayedLines.length" />
-        <q-btn flat round dense icon="content_copy" @click="copyLogs" :disable="!displayedLines.length" />
-        <q-btn flat round dense icon="delete" color="negative" @click="confirmClear" :disable="!rawLines.length" />
+        <q-btn flat round dense icon="file_download" @click="downloadLogs" :disable="!displayedLines.length">
+          <q-tooltip>Download</q-tooltip>
+        </q-btn>
+        <q-btn flat round dense icon="content_copy" @click="copyLogs" :disable="!displayedLines.length">
+          <q-tooltip>Copy</q-tooltip>
+        </q-btn>
+        <q-btn flat round dense icon="delete" color="negative" @click="confirmClear" :disable="!rawLines.length">
+          <q-tooltip>Clear log file</q-tooltip>
+        </q-btn>
       </q-card-section>
     </q-card>
 
     <!-- Log viewer panel -->
-    <q-card flat bordered class="log-viewer-card column flex-grow">
-      <div v-if="logFilePath" class="log-viewer-header row items-center">
-        <span class="text-caption text-grey-7">{{ logFilePath }}</span>
+    <q-card flat bordered class="log-viewer-card">
+      <div class="log-viewer-header row items-center">
+        <span class="text-caption">{{ logFilePath || 'Application logs' }}</span>
         <q-space />
-        <span class="text-caption text-grey-7">{{ displayedLines.length }} line(s)</span>
+        <span class="text-caption">{{ displayedLines.length }} line(s)</span>
       </div>
-      <div v-if="loading && !rawLines.length" class="log-viewer-body flex column items-center justify-center">
-        <q-spinner size="md" />
-        <span class="q-mt-sm text-grey-7">Loading...</span>
+      <div v-if="loading && !rawLines.length" class="log-viewer-body log-viewer-body--empty">
+        <q-spinner size="md" color="grey-5" />
+        <span class="q-mt-sm">Loading...</span>
       </div>
-      <div v-else-if="!rawLines.length" class="log-viewer-body flex column items-center justify-center text-grey-7">
+      <div v-else-if="!rawLines.length" class="log-viewer-body log-viewer-body--empty">
         No log entries.
       </div>
       <div
@@ -108,7 +109,6 @@
           <span class="log-msg" v-html="entry.messageHtml" />
         </div>
       </div>
-      <!-- Scroll to bottom button when not following and user scrolled up -->
       <q-btn
         v-if="!tailing && rawLines.length && !atBottom"
         flat
@@ -135,7 +135,6 @@ const message = ref('')
 const logFilePath = ref(null)
 const loading = ref(false)
 const logScrollRef = ref(null)
-const logBottomRef = ref(null)
 const atBottom = ref(true)
 const tailing = ref(false)
 const levelFilter = ref('all')
@@ -330,46 +329,68 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.log-viewer-card {
+.logs-page {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
-  max-height: calc(100vh - 220px);
+}
+
+.logs-toolbar .q-card__section {
+  gap: 4px;
+}
+
+.log-viewer-card {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 380px;
+  max-height: calc(100vh - 260px);
   background: #0f172a;
   border-radius: 8px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .log-viewer-header {
+  flex-shrink: 0;
   padding: 8px 12px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
   font-family: ui-monospace, 'SF Mono', Consolas, monospace;
   font-size: 0.75rem;
   color: #94a3b8;
-  flex-shrink: 0;
 }
 
 .log-viewer-body {
   flex: 1;
-  min-height: 0;
+  min-height: 120px;
   overflow-y: auto;
   padding: 12px 16px;
   font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
   font-size: 0.8125rem;
   line-height: 1.5;
-  color: #cbd5e1;
+  color: #e2e8f0;
+}
+
+.log-viewer-body--empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
 }
 
 .log-row {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
-  padding: 2px 0;
+  padding: 3px 0;
   white-space: pre-wrap;
   word-break: break-word;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.06);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
 }
 
 .log-row--match {
-  background: rgba(59, 130, 246, 0.08);
+  background: rgba(59, 130, 246, 0.12);
 }
 
 .log-ts {
@@ -420,7 +441,7 @@ onUnmounted(() => {
 }
 
 .log-msg :deep(.log-highlight) {
-  background: rgba(250, 204, 21, 0.4);
+  background: rgba(250, 204, 21, 0.45);
   color: #fef08a;
   padding: 0 2px;
   border-radius: 2px;
@@ -430,16 +451,12 @@ onUnmounted(() => {
   position: absolute;
   bottom: 16px;
   right: 16px;
-  background: rgba(15, 23, 42, 0.9);
+  background: rgba(15, 23, 42, 0.95);
   color: #94a3b8;
 }
 
 .scroll-to-bottom-btn:hover {
-  background: rgba(30, 41, 59, 0.95);
+  background: rgba(30, 41, 59, 0.98);
   color: #e2e8f0;
-}
-
-.log-viewer-card {
-  position: relative;
 }
 </style>

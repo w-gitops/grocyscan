@@ -85,6 +85,16 @@ export async function getProductByBarcode(deviceId, code) {
   return res.json()
 }
 
+export async function scanBarcode(barcode, skipCache = false) {
+  const res = await apiFetch('/api/scan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ barcode, skip_cache: skipCache }),
+  })
+  if (!res.ok) throw apiErrorFromResponse(res, await res.text())
+  return res.json()
+}
+
 export async function getMeProducts(deviceId, q = '') {
   const url = q ? `/api/me/products?q=${encodeURIComponent(q)}` : '/api/me/products'
   const res = await apiFetch(url, { headers: { 'X-Device-ID': deviceId } })

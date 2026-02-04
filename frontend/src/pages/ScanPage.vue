@@ -119,11 +119,27 @@
     <q-dialog v-model="reviewDialog">
       <q-card style="min-width: 350px; max-width: 450px">
         <q-card-section>
-          <div class="text-h6">{{ reviewData.found ? 'Product Found' : 'Product Not Found' }}</div>
+          <div class="row items-center q-gutter-sm">
+            <div class="text-h6">{{ reviewData.found ? 'Product Found' : 'Product Not Found' }}</div>
+            <q-badge v-if="reviewData.existing_in_grocy" color="green" label="In Grocy" />
+            <q-badge v-else-if="reviewData.found && reviewData.is_new" color="blue" label="New" />
+          </div>
         </q-card-section>
-        <q-card-section>
-          <div class="text-subtitle1 q-mb-sm">{{ reviewData.name || reviewData.barcode }}</div>
-          <div v-if="reviewData.barcode" class="text-caption text-grey q-mb-md">Barcode: {{ reviewData.barcode }}</div>
+        <q-card-section class="q-pt-none">
+          <!-- Product image if available -->
+          <div v-if="reviewData.image_url" class="q-mb-md text-center">
+            <q-img :src="reviewData.image_url" style="max-height: 120px; max-width: 120px" fit="contain" />
+          </div>
+          
+          <div class="text-subtitle1 q-mb-xs">{{ reviewData.name || reviewData.barcode }}</div>
+          <div v-if="reviewData.brand" class="text-caption text-grey-7 q-mb-xs">{{ reviewData.brand }}</div>
+          <div v-if="reviewData.category" class="text-caption text-grey q-mb-xs">{{ reviewData.category }}</div>
+          <div v-if="reviewData.barcode" class="text-caption text-grey q-mb-sm">Barcode: {{ reviewData.barcode }}</div>
+          
+          <!-- Lookup source info -->
+          <div v-if="reviewData.lookup_provider" class="text-caption text-grey q-mb-md">
+            Found via {{ reviewData.lookup_provider }} ({{ reviewData.lookup_time_ms }}ms)
+          </div>
           
           <q-input
             v-model.number="reviewData.quantity"
@@ -178,6 +194,7 @@ import {
   registerDevice as apiRegisterDevice,
   patchMeDevice,
   getProductByBarcode,
+  scanBarcode,
   addStock,
   consumeStock,
   getMeLocations,
@@ -373,20 +390,29 @@ async function registerDevice() {
 async function onLookup() {
   const code = barcode.value?.trim()
   if (!code) return
-  const fp = await deviceStore.ensureFingerprint()
   try {
-    const res = await getProductByBarcode(fp, code)
-    if (res) {
-      productName.value = res.name
-      productId.value = res.product_id
-      // Open review dialog with product info
+    // Use the /api/scan endpoint which performs external lookups
+    const res = await scanBarcode(code)
+    if (res.found && res.product) {
+      productName.value = res.product.name
+      productId.value = res.product.grocy_product_id
+      // Open review dialog with product info from lookup
       reviewData.value = {
-        barcode: code,
-        name: res.name,
+        barcode: res.barcode,
+        name: res.product.name,
+        brand: res.product.brand,
+        description: res.product.description,
+        category: res.product.category,
+        image_url: res.product.image_url,
         found: true,
-        product_id: res.product_id,
+        product_id: res.product.grocy_product_id,
+        is_new: res.product.is_new,
+        existing_in_grocy: res.existing_in_grocy,
+        scan_id: res.scan_id,
         quantity: 1,
         location_id: defaultLocationId.value,
+        lookup_provider: res.lookup_provider,
+        lookup_time_ms: res.lookup_time_ms,
       }
       reviewDialog.value = true
     } else {
@@ -398,6 +424,7 @@ async function onLookup() {
         name: '',
         found: false,
         product_id: null,
+        is_new: true,
         quantity: 1,
         location_id: defaultLocationId.value,
       }
