@@ -4,16 +4,6 @@ on:
   push:
     branches:
       - main
-      - master
-      - dev
-    tags:
-      - 'v*'
-  pull_request:
-    branches:
-      - main
-      - master
-      - dev
-  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
