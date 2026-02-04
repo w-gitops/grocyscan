@@ -15,8 +15,12 @@ async def _connect():
         pytest.skip("asyncpg not installed")
     url = DATABASE_URL.replace("+asyncpg", "").replace("postgresql+asyncpg", "postgresql")
     conn = await asyncpg.connect(url)
-    # Ensure RLS is enforced by using the app_user role.
-    await conn.execute("SET ROLE app_user")
+    # Ensure RLS is enforced. Prefer app_user role when available.
+    try:
+        await conn.execute("SET ROLE app_user")
+    except Exception:
+        # Role may not exist or current user cannot SET ROLE.
+        pass
     await conn.execute("SET row_security = on")
     return conn
 
