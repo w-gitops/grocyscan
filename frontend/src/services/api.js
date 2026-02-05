@@ -36,14 +36,23 @@ export async function login(username, password) {
 }
 
 function apiErrorFromResponse(res, text) {
-  let message = text
+  let message = (text && String(text).trim()) || ''
   try {
     const data = JSON.parse(text)
-    message = data.detail ?? data.message ?? text
-    if (Array.isArray(message)) message = message.map((m) => m.msg ?? m).join('; ')
+    const raw = data.detail ?? data.message ?? text
+    if (Array.isArray(raw)) {
+      message = raw.map((m) => (typeof m === 'object' && m && m.msg != null ? m.msg : m)).join('; ')
+    } else if (typeof raw === 'string') {
+      message = raw
+    } else if (raw != null && typeof raw === 'object') {
+      message = raw.message ?? raw.detail ?? JSON.stringify(raw)
+    } else {
+      message = String(raw)
+    }
   } catch {
-    /* use text */
+    if (!message) message = `Request failed (${res.status})`
   }
+  if (!message || !String(message).trim()) message = `Request failed (${res.status})`
   return new Error(message)
 }
 
@@ -81,7 +90,7 @@ export async function getProductByBarcode(deviceId, code) {
     headers: { 'X-Device-ID': deviceId },
   })
   if (res.status === 404) return null
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) throw apiErrorFromResponse(res, await res.text())
   return res.json()
 }
 
@@ -116,7 +125,7 @@ export async function confirmScan(scanId, { name, description, category, brand, 
 export async function getMeProducts(deviceId, q = '') {
   const url = q ? `/api/me/products?q=${encodeURIComponent(q)}` : '/api/me/products'
   const res = await apiFetch(url, { headers: { 'X-Device-ID': deviceId } })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) throw apiErrorFromResponse(res, await res.text())
   return res.json()
 }
 
@@ -124,7 +133,7 @@ export async function getMeProductDetail(deviceId, productId) {
   const res = await apiFetch(`/api/me/products/${productId}`, {
     headers: { 'X-Device-ID': deviceId },
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) throw apiErrorFromResponse(res, await res.text())
   return res.json()
 }
 

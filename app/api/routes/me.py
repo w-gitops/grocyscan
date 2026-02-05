@@ -417,9 +417,21 @@ async def list_products_me(
             barcodes_by_product.setdefault(row[0], []).append(row[1])
         out = []
         for p in products:
-            data = ProductResponse.model_validate(p).model_dump()
-            data["barcodes"] = barcodes_by_product.get(p.id, [])
-            out.append(ProductResponse(**data))
+            data = {
+                "id": p.id,
+                "tenant_id": p.tenant_id,
+                "name": p.name,
+                "name_normalized": getattr(p, "name_normalized", None),
+                "description": p.description,
+                "category": p.category,
+                "quantity_unit": getattr(p, "quantity_unit", None),
+                "min_stock_quantity": getattr(p, "min_stock_quantity", 0) or 0,
+                "attributes": getattr(p, "attributes", None),
+                "barcodes": barcodes_by_product.get(p.id, []),
+                "created_at": p.created_at,
+                "updated_at": p.updated_at,
+            }
+            out.append(ProductResponse.model_validate(data))
         return out
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
 

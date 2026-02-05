@@ -2,7 +2,7 @@
   <q-page class="logs-page q-pa-md">
     <!-- Page header -->
     <div class="row items-center q-mb-md">
-      <div class="text-h5">Logs</div>
+      <div class="text-h5" data-testid="logs-page-title">Logs</div>
       <q-space />
       <q-btn flat round icon="refresh" @click="loadLogs" :loading="loading" />
     </div>

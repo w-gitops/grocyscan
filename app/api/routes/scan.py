@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException
 
 from app.core.logging import get_logger
 from app.schemas.scan import (
@@ -94,7 +94,11 @@ async def scan_barcode(request: Request, scan_request: ScanRequest) -> ScanRespo
         logger.warning("Grocy lookup failed", barcode=lookup_barcode, error=str(e))
 
     # Look up product information
-    lookup_result = await lookup_manager.lookup(lookup_barcode, skip_cache=scan_request.skip_cache)
+    try:
+        lookup_result = await lookup_manager.lookup(lookup_barcode, skip_cache=scan_request.skip_cache)
+    except Exception as e:
+        logger.warning("Lookup failed", barcode=lookup_barcode, error=str(e))
+        raise HTTPException(status_code=502, detail=str(e) or "Product lookup failed") from e
 
     # Build product info
     product = None
