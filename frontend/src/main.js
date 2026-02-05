@@ -18,7 +18,9 @@ async function bootstrap() {
 
   const configStore = useConfigStore(pinia)
   await configStore.load()
-  document.title = configStore.appTitle
+  document.title = configStore.version
+    ? `${configStore.appTitle} · ${configStore.version}`
+    : configStore.appTitle
 
   const authStore = useAuthStore(pinia)
   try {

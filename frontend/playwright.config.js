@@ -55,21 +55,21 @@ export default defineConfig({
   
   // Browser projects
   projects: [
-    // Desktop Chrome - primary target
+    // Desktop Chrome - primary target, excludes mobile-specific tests
     {
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
       },
+      testIgnore: ['**/responsive.spec.js'],
     },
     
-    // Mobile Chrome - for responsive tests
+    // Mobile Chrome - ONLY for responsive tests
     {
       name: 'mobile-chrome',
       use: {
         ...devices['Pixel 5'],
       },
-      // Only run responsive tests on mobile
       testMatch: ['**/responsive.spec.js'],
     },
     
