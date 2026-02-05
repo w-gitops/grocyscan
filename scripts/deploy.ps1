@@ -37,6 +37,9 @@ scp alembic.ini "${REMOTE_HOST}:${REMOTE_PATH}/"
 # Sync requirements if changed
 scp requirements.txt "${REMOTE_HOST}:${REMOTE_PATH}/"
 
+# Sync pyproject.toml (version is read from here at runtime)
+scp pyproject.toml "${REMOTE_HOST}:${REMOTE_PATH}/"
+
 # Sync environment file (if present)
 if (Test-Path $LOCAL_ENV_FILE) {
     Write-Host "Syncing environment file..." -ForegroundColor Yellow
