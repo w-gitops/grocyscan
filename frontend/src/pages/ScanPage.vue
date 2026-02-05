@@ -1,11 +1,11 @@
 <template>
-  <q-page class="q-pa-md">
+  <q-page class="q-pa-md" data-testid="scan-page">
     <h1 class="text-h5 q-mb-md">Scan</h1>
 
     <!-- Device registration prompt -->
-    <q-banner v-if="showDevicePrompt" class="bg-primary text-white rounded-borders q-mb-md">
+    <q-banner v-if="showDevicePrompt" class="bg-primary text-white rounded-borders q-mb-md" data-testid="scan-device-prompt">
       <template v-slot:action>
-        <q-btn flat label="Register" @click="openDeviceDialog" />
+        <q-btn flat label="Register" @click="openDeviceDialog" data-testid="scan-device-register-btn" />
       </template>
       Register this device to use Homebot inventory.
     </q-banner>
@@ -21,6 +21,7 @@
       ]"
       class="q-mb-md"
       spread
+      data-testid="scan-action-mode"
       @update:model-value="onActionModeChange"
     />
 
@@ -36,10 +37,11 @@
       map-options
       clearable
       class="q-mb-md"
+      data-testid="scan-location-selector"
       @update:model-value="onDefaultLocationChange"
     />
 
-    <q-card flat bordered>
+    <q-card flat bordered data-testid="scan-card">
       <q-card-section>
         <!-- Camera scanner toggle -->
         <div class="row items-center q-mb-sm">
@@ -49,12 +51,13 @@
             :color="cameraActive ? 'negative' : 'secondary'"
             outline
             class="full-width q-mb-sm"
+            data-testid="scan-camera-button"
             @click="toggleCamera"
           />
         </div>
 
         <!-- Camera preview -->
-        <div v-show="cameraActive" id="scanner-container" class="q-mb-sm" style="width: 100%; max-width: 400px; min-height: 300px; margin: 0 auto; background: #000;"></div>
+        <div v-show="cameraActive" id="scanner-container" class="q-mb-sm" data-testid="scan-camera-preview" style="width: 100%; max-width: 400px; min-height: 300px; margin: 0 auto; background: #000;"></div>
 
         <q-input
           v-model="barcode"
@@ -62,34 +65,35 @@
           outlined
           dense
           placeholder="Scan or enter barcode..."
+          data-testid="scan-barcode-input"
           @keydown.enter="onLookup"
           class="q-mb-sm"
         >
           <template v-slot:append>
-            <q-btn icon="search" flat round dense @click="onLookup" />
+            <q-btn icon="search" flat round dense @click="onLookup" data-testid="scan-submit" />
           </template>
         </q-input>
-        <q-btn label="Look up" color="primary" @click="onLookup" class="full-width" />
+        <q-btn label="Look up" color="primary" @click="onLookup" class="full-width" data-testid="scan-lookup-btn" />
       </q-card-section>
     </q-card>
 
     <!-- Result -->
-    <q-card v-if="productName" flat bordered class="q-mt-md">
+    <q-card v-if="productName" flat bordered class="q-mt-md" data-testid="scan-result-card">
       <q-card-section>
-        <div class="text-subtitle1">{{ productName }}</div>
+        <div class="text-subtitle1" data-testid="scan-result-name">{{ productName }}</div>
         <div class="row q-gutter-sm q-mt-sm">
-          <q-btn label="+1" color="green" @click="quickAdd(1)" />
-          <q-btn label="-1" color="orange" @click="quickConsume(1)" />
+          <q-btn label="+1" color="green" @click="quickAdd(1)" data-testid="scan-quick-add" />
+          <q-btn label="-1" color="orange" @click="quickConsume(1)" data-testid="scan-quick-consume" />
         </div>
       </q-card-section>
     </q-card>
 
     <!-- Recent scans -->
-    <q-card v-if="recentScans.length" flat bordered class="q-mt-md">
+    <q-card v-if="recentScans.length" flat bordered class="q-mt-md" data-testid="scan-recent-card">
       <q-card-section>
         <div class="text-subtitle2 q-mb-sm">Recent Scans</div>
-        <q-list dense>
-          <q-item v-for="(scan, idx) in recentScans" :key="idx" dense>
+        <q-list dense data-testid="scan-recent-list">
+          <q-item v-for="(scan, idx) in recentScans" :key="idx" dense data-testid="scan-recent-item">
             <q-item-section avatar>
               <q-icon :name="scan.success ? 'check_circle' : 'info'" :color="scan.success ? 'green' : 'grey'" size="sm" />
             </q-item-section>
@@ -103,26 +107,26 @@
     </q-card>
 
     <!-- Device registration dialog -->
-    <q-dialog v-model="deviceDialog">
-      <q-card style="min-width: 320px">
+    <q-dialog v-model="deviceDialog" data-testid="device-dialog">
+      <q-card style="min-width: 320px" data-testid="device-dialog-card">
         <q-card-section>
           <div class="text-h6">Register device</div>
         </q-card-section>
         <q-card-section>
-          <q-input v-model="deviceName" label="Device name" outlined dense class="q-mb-sm" />
-          <q-btn label="Register" color="primary" class="full-width" @click="registerDevice" />
+          <q-input v-model="deviceName" label="Device name" outlined dense class="q-mb-sm" data-testid="device-name-input" />
+          <q-btn label="Register" color="primary" class="full-width" @click="registerDevice" data-testid="device-register-submit" />
         </q-card-section>
       </q-card>
     </q-dialog>
 
     <!-- Product Review popup -->
-    <q-dialog v-model="reviewDialog">
-      <q-card style="min-width: 350px; max-width: 450px">
+    <q-dialog v-model="reviewDialog" data-testid="product-review-dialog">
+      <q-card style="min-width: 350px; max-width: 450px" data-testid="product-review-card">
         <q-card-section>
           <div class="row items-center q-gutter-sm">
-            <div class="text-h6">{{ reviewData.in_homebot ? 'In Inventory' : reviewData.found ? 'Lookup Found' : 'New Product' }}</div>
-            <q-badge v-if="reviewData.in_homebot" color="green" label="In Homebot" />
-            <q-badge v-else-if="reviewData.found" color="blue" label="From lookup" />
+            <div class="text-h6" data-testid="product-review-title">{{ reviewData.in_homebot ? 'In Inventory' : reviewData.found ? 'Lookup Found' : 'New Product' }}</div>
+            <q-badge v-if="reviewData.in_homebot" color="green" label="In Homebot" data-testid="product-review-badge-homebot" />
+            <q-badge v-else-if="reviewData.found" color="blue" label="From lookup" data-testid="product-review-badge-lookup" />
           </div>
         </q-card-section>
         <q-card-section class="q-pt-none">
@@ -149,6 +153,7 @@
             dense
             placeholder="Enter name for new product"
             class="q-mb-sm"
+            data-testid="product-review-name-input"
           />
           <q-input
             v-model.number="reviewData.quantity"
@@ -158,6 +163,7 @@
             outlined
             dense
             class="q-mb-sm"
+            data-testid="product-review-quantity"
           />
           <q-select
             v-if="locations.length"
@@ -169,10 +175,11 @@
             emit-value
             map-options
             clearable
+            data-testid="product-review-location"
           />
         </q-card-section>
         <q-card-actions align="right">
-          <q-btn flat label="Cancel" v-close-popup />
+          <q-btn flat label="Cancel" v-close-popup data-testid="product-review-cancel" />
           <q-btn
             v-if="reviewData.in_homebot"
             flat
@@ -180,6 +187,7 @@
             :color="actionMode === 'consume' ? 'orange' : 'primary'"
             @click="confirmReview"
             :loading="reviewLoading"
+            data-testid="product-review-confirm"
           />
           <q-btn
             v-else-if="reviewData.found || reviewData.name"
@@ -188,6 +196,7 @@
             color="primary"
             @click="createAndAddToHomebot"
             :loading="reviewLoading"
+            data-testid="product-review-create"
           />
           <q-btn
             v-else
@@ -195,6 +204,7 @@
             label="Enter name below, then Create & Add"
             color="grey"
             disable
+            data-testid="product-review-disabled"
           />
         </q-card-actions>
       </q-card>
