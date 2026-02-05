@@ -1,11 +1,10 @@
 /**
  * Base Page Object class
- * 
- * All page objects should extend this class to inherit common functionality.
+ * All page objects should extend this class
  */
 export class BasePage {
   /**
-   * @param {import('@playwright/test').Page} page - Playwright page instance
+   * @param {import('@playwright/test').Page} page
    */
   constructor(page) {
     this.page = page
@@ -13,7 +12,7 @@ export class BasePage {
 
   /**
    * Navigate to this page's URL
-   * Must be implemented by subclasses
+   * Must be implemented by subclass
    */
   async goto() {
     throw new Error('goto() must be implemented by subclass')
@@ -21,14 +20,13 @@ export class BasePage {
 
   /**
    * Wait for page to be fully loaded
-   * Override in subclasses for page-specific loading indicators
    */
   async waitForLoad() {
     await this.page.waitForLoadState('networkidle')
   }
 
   /**
-   * Navigate to page and wait for it to load
+   * Navigate to page and wait for load
    */
   async navigate() {
     await this.goto()
@@ -45,57 +43,67 @@ export class BasePage {
 
   /**
    * Check if currently on this page
-   * Must be implemented by subclasses
+   * Must be implemented by subclass
    */
   async isOnPage() {
     throw new Error('isOnPage() must be implemented by subclass')
   }
 
   /**
-   * Wait for a notification/toast message
+   * Wait for a notification to appear
    * @param {string} text - Text to look for in notification
-   * @param {string} type - Notification type (success, error, warning, info)
+   * @param {string|null} type - Optional notification type (positive, negative, warning, info)
    */
   async waitForNotification(text, type = null) {
-    const notification = this.page.locator('.q-notification')
-    await notification.waitFor({ state: 'visible' })
-    if (text) {
-      await this.page.getByText(text).waitFor({ state: 'visible' })
-    }
+    const selector = type 
+      ? `.q-notification.bg-${type}:has-text("${text}")`
+      : `.q-notification:has-text("${text}")`
+    await this.page.waitForSelector(selector, { timeout: 5000 })
   }
 
   /**
-   * Dismiss any visible notifications
+   * Dismiss all visible notifications
    */
   async dismissNotifications() {
-    const notifications = this.page.locator('.q-notification')
-    const count = await notifications.count()
+    const closeButtons = this.page.locator('.q-notification button[aria-label="Close"]')
+    const count = await closeButtons.count()
     for (let i = 0; i < count; i++) {
-      const closeBtn = notifications.nth(i).locator('button')
-      if (await closeBtn.isVisible()) {
-        await closeBtn.click()
-      }
+      await closeButtons.nth(i).click().catch(() => {})
     }
   }
 
   /**
-   * Wait for API call to complete
-   * @param {string} urlPattern - URL pattern to match
+   * Wait for an API response
+   * @param {string|RegExp} urlPattern - URL pattern to match
    */
   async waitForApi(urlPattern) {
-    await this.page.waitForResponse(
-      response => response.url().includes(urlPattern) && response.status() === 200
-    )
+    return this.page.waitForResponse(urlPattern)
   }
 
   /**
    * Take a screenshot with a descriptive name
-   * @param {string} name - Screenshot name
+   * @param {string} name - Screenshot name (without extension)
    */
   async screenshot(name) {
     await this.page.screenshot({ 
       path: `test-results/screenshots/${name}.png`,
       fullPage: true 
     })
+  }
+
+  /**
+   * Get element by data-testid
+   * @param {string} testId - The data-testid value
+   */
+  getByTestId(testId) {
+    return this.page.locator(`[data-testid="${testId}"]`)
+  }
+
+  /**
+   * Check if element with data-testid exists and is visible
+   * @param {string} testId - The data-testid value
+   */
+  async isTestIdVisible(testId) {
+    return this.getByTestId(testId).isVisible()
   }
 }

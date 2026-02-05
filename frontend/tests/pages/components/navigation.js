@@ -1,154 +1,149 @@
 /**
- * Navigation Component Object
- * 
- * Encapsulates interactions with the header and mobile navigation.
+ * Navigation Component Page Object
+ * Handles header and navigation interactions
  */
-export class NavigationComponent {
-  /**
-   * @param {import('@playwright/test').Page} page 
-   */
+import { BasePage } from '../base.page.js'
+
+export class NavigationComponent extends BasePage {
   constructor(page) {
-    this.page = page
+    super(page)
     
-    // Header elements
-    this.header = page.getByTestId('app-header')
-    this.logo = page.getByTestId('app-logo')
-    this.logoutButton = page.getByTestId('logout-button')
+    // Header
+    this.header = this.getByTestId('app-header')
+    this.appLogo = this.getByTestId('app-logo')
     
-    // Desktop nav buttons
-    this.navScan = page.getByTestId('nav-scan')
-    this.navProducts = page.getByTestId('nav-products')
-    this.navInventory = page.getByTestId('nav-inventory')
-    this.navLocations = page.getByTestId('nav-locations')
-    this.navJobs = page.getByTestId('nav-jobs')
-    this.navLogs = page.getByTestId('nav-logs')
-    this.navSettings = page.getByTestId('nav-settings')
+    // Desktop navigation
+    this.navScan = this.getByTestId('nav-scan')
+    this.navProducts = this.getByTestId('nav-products')
+    this.navInventory = this.getByTestId('nav-inventory')
+    this.navLocations = this.getByTestId('nav-locations')
+    this.navJobs = this.getByTestId('nav-jobs')
+    this.navLogs = this.getByTestId('nav-logs')
+    this.navSettings = this.getByTestId('nav-settings')
+    this.logoutBtn = this.getByTestId('nav-logout')
     
-    // Mobile nav
-    this.mobileMenuButton = page.getByTestId('mobile-menu-button')
-    this.mobileDrawer = page.getByTestId('mobile-drawer')
-    this.mobileNavScan = page.getByTestId('mobile-nav-scan')
-    this.mobileNavProducts = page.getByTestId('mobile-nav-products')
-    this.mobileNavSettings = page.getByTestId('mobile-nav-settings')
+    // Mobile navigation
+    this.mobileMenuBtn = this.getByTestId('mobile-menu-button')
+    this.mobileDrawer = this.getByTestId('mobile-drawer')
+    this.mobileNavScan = this.getByTestId('mobile-nav-scan')
+    this.mobileNavProducts = this.getByTestId('mobile-nav-products')
+    this.mobileNavInventory = this.getByTestId('mobile-nav-inventory')
+    this.mobileNavLocations = this.getByTestId('mobile-nav-locations')
+    this.mobileNavJobs = this.getByTestId('mobile-nav-jobs')
+    this.mobileNavLogs = this.getByTestId('mobile-nav-logs')
+    this.mobileNavSettings = this.getByTestId('mobile-nav-settings')
     
-    // Fallback selectors
-    this.logoFallback = page.getByText('GrocyScan')
-    this.logoutButtonFallback = page.getByRole('button', { name: /logout|sign out/i })
+    // Fallbacks
+    this.scanBtnFallback = page.getByRole('button', { name: 'Scan' })
+    this.productsBtnFallback = page.getByRole('button', { name: 'Products' })
+    this.settingsBtnFallback = page.getByRole('button', { name: 'Settings' })
+    this.menuBtnFallback = page.locator('button[aria-label="Menu"], button:has(> .q-icon:text("menu"))')
+  }
+
+  // Not a standalone page, so no goto
+  async goto() {
+    throw new Error('NavigationComponent is not a standalone page')
+  }
+
+  async isOnPage() {
+    return true // Always present when logged in
   }
 
   /**
-   * Navigate to a page using desktop navigation
-   * @param {'scan' | 'products' | 'inventory' | 'locations' | 'jobs' | 'logs' | 'settings'} page 
+   * Check if header is visible
+   */
+  async isHeaderVisible() {
+    return this.header.isVisible().catch(() => 
+      this.page.locator('header').isVisible()
+    )
+  }
+
+  /**
+   * Navigate to a page via desktop nav
    */
   async navigateTo(pageName) {
-    const navButtons = {
-      scan: [this.navScan, /scan/i],
-      products: [this.navProducts, /products/i],
-      inventory: [this.navInventory, /inventory/i],
-      locations: [this.navLocations, /locations/i],
-      jobs: [this.navJobs, /jobs/i],
-      logs: [this.navLogs, /logs/i],
-      settings: [this.navSettings, /settings/i]
+    const navMap = {
+      scan: this.navScan.or(this.scanBtnFallback),
+      products: this.navProducts.or(this.productsBtnFallback),
+      inventory: this.navInventory.or(this.page.getByRole('button', { name: 'Inventory' })),
+      locations: this.navLocations.or(this.page.getByRole('button', { name: 'Locations' })),
+      jobs: this.navJobs.or(this.page.getByRole('button', { name: 'Jobs' })),
+      logs: this.navLogs.or(this.page.getByRole('button', { name: 'Logs' })),
+      settings: this.navSettings.or(this.settingsBtnFallback)
     }
     
-    const [testIdLocator, textPattern] = navButtons[pageName]
-    const btn = await testIdLocator.isVisible().catch(() => false)
-      ? testIdLocator
-      : this.page.getByRole('button', { name: textPattern })
-    
-    await btn.click()
+    const navBtn = navMap[pageName.toLowerCase()]
+    if (navBtn) {
+      await navBtn.click()
+    }
   }
 
   /**
-   * Open mobile drawer
+   * Open mobile menu
    */
   async openMobileMenu() {
-    const btn = await this.mobileMenuButton.isVisible().catch(() => false)
-      ? this.mobileMenuButton
-      : this.page.locator('[aria-label="Menu"], .q-drawer-toggle')
-    await btn.click()
-  }
-
-  /**
-   * Close mobile drawer
-   */
-  async closeMobileMenu() {
-    // Click outside or on close button
-    await this.page.keyboard.press('Escape')
-  }
-
-  /**
-   * Navigate using mobile menu
-   * @param {'scan' | 'products' | 'settings'} page 
-   */
-  async mobileNavigateTo(pageName) {
-    await this.openMobileMenu()
-    
-    const mobileNavButtons = {
-      scan: [this.mobileNavScan, /scan/i],
-      products: [this.mobileNavProducts, /products/i],
-      settings: [this.mobileNavSettings, /settings/i]
-    }
-    
-    const [testIdLocator, textPattern] = mobileNavButtons[pageName]
-    const btn = await testIdLocator.isVisible().catch(() => false)
-      ? testIdLocator
-      : this.mobileDrawer.getByText(textPattern)
-    
-    await btn.click()
+    const menuBtn = this.mobileMenuBtn.or(this.menuBtnFallback)
+    await menuBtn.click()
   }
 
   /**
    * Check if mobile menu is open
    */
   async isMobileMenuOpen() {
-    const drawer = await this.mobileDrawer.isVisible().catch(() => false)
-    if (drawer) return true
-    return await this.page.locator('.q-drawer--open').isVisible()
+    return this.mobileDrawer.isVisible().catch(() => 
+      this.page.locator('.q-drawer').isVisible()
+    )
+  }
+
+  /**
+   * Navigate via mobile menu
+   */
+  async navigateViaMobile(pageName) {
+    await this.openMobileMenu()
+    
+    const mobileNavMap = {
+      scan: this.mobileNavScan,
+      products: this.mobileNavProducts,
+      inventory: this.mobileNavInventory,
+      locations: this.mobileNavLocations,
+      jobs: this.mobileNavJobs,
+      logs: this.mobileNavLogs,
+      settings: this.mobileNavSettings
+    }
+    
+    const navItem = mobileNavMap[pageName.toLowerCase()]
+    if (navItem) {
+      await navItem.click().catch(async () => {
+        // Fallback: click by text in drawer
+        await this.page.locator(`.q-drawer .q-item:has-text("${pageName}")`).click()
+      })
+    } else {
+      // Fallback
+      await this.page.locator(`.q-drawer .q-item:has-text("${pageName}")`).click()
+    }
   }
 
   /**
    * Logout
    */
   async logout() {
-    const btn = await this.logoutButton.isVisible().catch(() => false)
-      ? this.logoutButton
-      : this.logoutButtonFallback
-    await btn.click()
+    await this.logoutBtn.or(this.page.locator('button:has(.q-icon:text("logout"))')).click()
   }
 
   /**
-   * Check if user is logged in (logout button visible)
+   * Get app title text
    */
-  async isLoggedIn() {
-    return await this.logoutButton.isVisible().catch(() => false) ||
-           await this.logoutButtonFallback.isVisible().catch(() => false)
+  async getAppTitle() {
+    return this.appLogo.textContent().catch(() => 
+      this.page.locator('.q-toolbar-title').textContent()
+    )
   }
 
   /**
-   * Get header visibility
+   * Check if on mobile viewport
    */
-  async isHeaderVisible() {
-    const header = await this.header.isVisible().catch(() => false)
-    if (header) return true
-    return await this.page.locator('header, .q-header').isVisible()
-  }
-
-  /**
-   * Check if in mobile view (mobile nav visible)
-   */
-  async isMobileView() {
-    // Check if mobile menu button is visible
-    const mobileBtn = await this.mobileMenuButton.isVisible().catch(() => false)
-    if (mobileBtn) return true
-    return await this.page.locator('.q-drawer-toggle').isVisible()
-  }
-
-  /**
-   * Get current active nav item
-   */
-  async getActiveNavItem() {
-    const activeNav = this.page.locator('[aria-current="page"], .router-link-active, .q-tab--active')
-    return await activeNav.textContent()
+  async isMobileViewport() {
+    const viewport = this.page.viewportSize()
+    return viewport && viewport.width < 1024
   }
 }

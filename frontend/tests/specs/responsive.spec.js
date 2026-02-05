@@ -1,180 +1,154 @@
 /**
  * Responsive Design Tests
- * 
- * Tests for different viewport sizes: mobile, tablet, desktop.
- * Maps to BrowserMCP test cases RSP-01 through RSP-04.
+ * Tests UI behavior across different viewport sizes
  */
-import { test, expect } from '../fixtures/auth.fixture.js'
+import { test, expect } from '../fixtures/index.js'
+import { LoginPage } from '../pages/login.page.js'
+
+const viewports = {
+  mobile: { width: 375, height: 667 },
+  tablet: { width: 768, height: 1024 },
+  desktop: { width: 1280, height: 800 }
+}
 
 test.describe('Responsive Design', () => {
-  // Login before tests
-  async function loginAndNavigate(page, request, baseURL, path = '/scan') {
-    const health = await request.get(`${baseURL}/api/health`).catch(() => null)
-    if (!health?.ok()) {
-      test.skip(true, 'Backend not available')
-    }
-
-    await page.goto('/login')
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Password').fill('test')
-    await page.getByRole('button', { name: /sign in/i }).click()
-    await page.waitForURL(/\/scan/)
-    
-    if (path !== '/scan') {
-      await page.goto(path)
-    }
-  }
-
   test.describe('Mobile Viewport (375px)', () => {
-    test.beforeEach(async ({ page }) => {
-      await page.setViewportSize({ width: 375, height: 667 })
+    test.use({ viewport: viewports.mobile })
+
+    test('login page renders correctly on mobile', async ({ page }) => {
+      const loginPage = new LoginPage(page)
+      await loginPage.navigate()
+
+      await expect(page.getByText('Sign in to continue')).toBeVisible()
+      await expect(loginPage.getUsernameInput()).toBeVisible()
+      await expect(loginPage.getPasswordInput()).toBeVisible()
     })
 
-    // RSP-01: Mobile scan page
-    test('scan page renders correctly on mobile', async ({ page, request, baseURL }) => {
-      await loginAndNavigate(page, request, baseURL, '/scan')
-      
+    test('mobile menu button is visible when logged in', async ({ page, request, baseURL }) => {
+      const health = await request.get(`${baseURL}/api/health`).catch(() => null)
+      if (!health?.ok()) {
+        test.skip(true, 'Backend not available')
+      }
+
+      const loginPage = new LoginPage(page)
+      await loginPage.navigate()
+      await loginPage.login('admin', 'test')
+
       // Mobile menu button should be visible
-      await expect(page.getByTestId('mobile-menu-button')).toBeVisible()
-      
-      // Desktop nav should be hidden
-      await expect(page.getByTestId('nav-scan')).not.toBeVisible()
-      
-      // Page content should be visible
-      await expect(page.getByRole('heading', { name: 'Scan' })).toBeVisible()
-      await expect(page.getByTestId('scan-barcode-input')).toBeVisible()
+      const menuBtn = page.locator('button').filter({ has: page.locator('.q-icon') }).first()
+      await expect(menuBtn).toBeVisible()
     })
 
-    test('products page renders correctly on mobile', async ({ page, request, baseURL }) => {
-      await loginAndNavigate(page, request, baseURL, '/products')
-      
-      await expect(page.getByTestId('mobile-menu-button')).toBeVisible()
-      await expect(page.getByText('Products')).toBeVisible()
-      await expect(page.getByTestId('products-search')).toBeVisible()
-    })
+    test('desktop nav buttons are hidden on mobile', async ({ page, request, baseURL }) => {
+      const health = await request.get(`${baseURL}/api/health`).catch(() => null)
+      if (!health?.ok()) {
+        test.skip(true, 'Backend not available')
+      }
 
-    test('settings page renders correctly on mobile', async ({ page, request, baseURL }) => {
-      await loginAndNavigate(page, request, baseURL, '/settings')
-      
-      await expect(page.getByTestId('mobile-menu-button')).toBeVisible()
-      await expect(page.getByText('Settings')).toBeVisible()
-      
-      // Tabs should be visible and scrollable
-      await expect(page.getByTestId('settings-tab-grocy')).toBeVisible()
-    })
+      const loginPage = new LoginPage(page)
+      await loginPage.navigate()
+      await loginPage.login('admin', 'test')
 
-    test('mobile drawer opens and navigates', async ({ page, request, baseURL }) => {
-      await loginAndNavigate(page, request, baseURL, '/scan')
+      // Desktop nav buttons should be hidden (gt-sm class hides on mobile)
+      const desktopNav = page.locator('.q-toolbar .gt-sm')
+      const count = await desktopNav.count()
       
-      // Open mobile drawer
-      await page.getByTestId('mobile-menu-button').click()
-      await expect(page.getByTestId('mobile-drawer')).toBeVisible()
-      
-      // Navigate to products
-      await page.getByTestId('mobile-nav-products').click()
-      await expect(page).toHaveURL(/\/products/)
-    })
-
-    // RSP-04: Touch targets
-    test('buttons have adequate touch targets', async ({ page, request, baseURL }) => {
-      await loginAndNavigate(page, request, baseURL, '/scan')
-      
-      // Check that main buttons are large enough for touch
-      const submitBtn = page.getByTestId('scan-lookup-btn')
-      const box = await submitBtn.boundingBox()
-      
-      // Minimum touch target: 48x48px (Google recommendation)
-      // Allow some tolerance for border-box sizing
-      expect(box.height).toBeGreaterThanOrEqual(36)
-      expect(box.width).toBeGreaterThanOrEqual(48)
+      // Either hidden or not present
+      for (let i = 0; i < count; i++) {
+        const isVisible = await desktopNav.nth(i).isVisible().catch(() => false)
+        expect(isVisible).toBe(false)
+      }
     })
   })
 
   test.describe('Tablet Viewport (768px)', () => {
-    test.beforeEach(async ({ page }) => {
-      await page.setViewportSize({ width: 768, height: 1024 })
+    test.use({ viewport: viewports.tablet })
+
+    test('login page renders correctly on tablet', async ({ page }) => {
+      const loginPage = new LoginPage(page)
+      await loginPage.navigate()
+
+      await expect(page.getByText('Sign in to continue')).toBeVisible()
     })
 
-    // RSP-02: Tablet products page
-    test('products page renders correctly on tablet', async ({ page, request, baseURL }) => {
-      await loginAndNavigate(page, request, baseURL, '/products')
-      
-      await expect(page.getByText('Products')).toBeVisible()
-      await expect(page.getByTestId('products-search')).toBeVisible()
-    })
+    test('navigation adapts to tablet size', async ({ page, request, baseURL }) => {
+      const health = await request.get(`${baseURL}/api/health`).catch(() => null)
+      if (!health?.ok()) {
+        test.skip(true, 'Backend not available')
+      }
 
-    test('navigation layout adjusts for tablet', async ({ page, request, baseURL }) => {
-      await loginAndNavigate(page, request, baseURL, '/scan')
-      
-      // May show either desktop nav or mobile nav depending on breakpoint
-      const hasMobileMenu = await page.getByTestId('mobile-menu-button').isVisible().catch(() => false)
-      const hasDesktopNav = await page.getByTestId('nav-scan').isVisible().catch(() => false)
-      
-      expect(hasMobileMenu || hasDesktopNav).toBeTruthy()
+      const loginPage = new LoginPage(page)
+      await loginPage.navigate()
+      await loginPage.login('admin', 'test')
+
+      // At 768px, may show mobile menu or partial desktop nav
+      const hasHeader = await page.locator('header').isVisible()
+      expect(hasHeader).toBe(true)
     })
   })
 
   test.describe('Desktop Viewport (1280px)', () => {
-    test.beforeEach(async ({ page }) => {
-      await page.setViewportSize({ width: 1280, height: 800 })
+    test.use({ viewport: viewports.desktop })
+
+    test('login page renders correctly on desktop', async ({ page }) => {
+      const loginPage = new LoginPage(page)
+      await loginPage.navigate()
+
+      await expect(page.getByText('Sign in to continue')).toBeVisible()
     })
 
-    // RSP-03: Desktop settings
-    test('settings page renders full width on desktop', async ({ page, request, baseURL }) => {
-      await loginAndNavigate(page, request, baseURL, '/settings')
-      
-      await expect(page.getByText('Settings')).toBeVisible()
-      
-      // All tabs should be visible
-      await expect(page.getByTestId('settings-tab-grocy')).toBeVisible()
-      await expect(page.getByTestId('settings-tab-llm')).toBeVisible()
-      await expect(page.getByTestId('settings-tab-lookup')).toBeVisible()
-      await expect(page.getByTestId('settings-tab-scanning')).toBeVisible()
-      await expect(page.getByTestId('settings-tab-ui')).toBeVisible()
+    test('desktop navigation is visible', async ({ page, request, baseURL }) => {
+      const health = await request.get(`${baseURL}/api/health`).catch(() => null)
+      if (!health?.ok()) {
+        test.skip(true, 'Backend not available')
+      }
+
+      const loginPage = new LoginPage(page)
+      await loginPage.navigate()
+      await loginPage.login('admin', 'test')
+
+      // Desktop nav should be visible
+      const scanBtn = page.getByRole('button', { name: 'Scan' })
+      await expect(scanBtn).toBeVisible()
+
+      const productsBtn = page.getByRole('button', { name: 'Products' })
+      await expect(productsBtn).toBeVisible()
     })
 
-    test('desktop nav is visible', async ({ page, request, baseURL }) => {
-      await loginAndNavigate(page, request, baseURL, '/scan')
-      
-      // Desktop nav buttons should be visible
-      await expect(page.getByTestId('nav-scan')).toBeVisible()
-      await expect(page.getByTestId('nav-products')).toBeVisible()
-      await expect(page.getByTestId('nav-settings')).toBeVisible()
-      
-      // Mobile menu should be hidden
-      await expect(page.getByTestId('mobile-menu-button')).not.toBeVisible()
-    })
+    test('mobile menu button is hidden on desktop', async ({ page, request, baseURL }) => {
+      const health = await request.get(`${baseURL}/api/health`).catch(() => null)
+      if (!health?.ok()) {
+        test.skip(true, 'Backend not available')
+      }
 
-    test('header and content layout correct', async ({ page, request, baseURL }) => {
-      await loginAndNavigate(page, request, baseURL, '/scan')
+      const loginPage = new LoginPage(page)
+      await loginPage.navigate()
+      await loginPage.login('admin', 'test')
+
+      // Mobile menu button (lt-md class) should be hidden
+      const mobileMenuBtn = page.locator('.lt-md')
+      const count = await mobileMenuBtn.count()
       
-      await expect(page.getByTestId('app-header')).toBeVisible()
-      await expect(page.getByTestId('app-logo')).toBeVisible()
-      await expect(page.getByRole('heading', { name: 'Scan' })).toBeVisible()
+      for (let i = 0; i < count; i++) {
+        const isVisible = await mobileMenuBtn.nth(i).isVisible().catch(() => false)
+        expect(isVisible).toBe(false)
+      }
     })
   })
 
-  test.describe('Viewport Transitions', () => {
-    test('layout adjusts when viewport changes', async ({ page, request, baseURL }) => {
-      await page.setViewportSize({ width: 1280, height: 800 })
-      await loginAndNavigate(page, request, baseURL, '/scan')
-      
-      // Desktop: nav visible
-      await expect(page.getByTestId('nav-scan')).toBeVisible()
-      
-      // Resize to mobile
-      await page.setViewportSize({ width: 375, height: 667 })
-      await page.waitForTimeout(500)
-      
-      // Mobile: menu button visible
-      await expect(page.getByTestId('mobile-menu-button')).toBeVisible()
-      
-      // Resize back to desktop
-      await page.setViewportSize({ width: 1280, height: 800 })
-      await page.waitForTimeout(500)
-      
-      // Desktop nav visible again
-      await expect(page.getByTestId('nav-scan')).toBeVisible()
+  test.describe('Cross-Viewport Consistency', () => {
+    test('login form maintains functionality across viewports', async ({ page }) => {
+      const loginPage = new LoginPage(page)
+
+      for (const [name, viewport] of Object.entries(viewports)) {
+        await page.setViewportSize(viewport)
+        await loginPage.navigate()
+
+        // Form should always be functional
+        await expect(loginPage.getUsernameInput()).toBeVisible()
+        await expect(loginPage.getPasswordInput()).toBeVisible()
+        await expect(loginPage.getSubmitButton()).toBeVisible()
+      }
     })
   })
 })

@@ -1,7 +1,5 @@
 /**
  * Logs Page Object
- * 
- * Encapsulates all interactions with the application logs page.
  */
 import { BasePage } from './base.page.js'
 
@@ -9,26 +7,29 @@ export class LogsPage extends BasePage {
   constructor(page) {
     super(page)
     
+    // Page elements
+    this.pageContainer = this.getByTestId('logs-page')
+    this.title = this.getByTestId('logs-title')
+    this.logsList = this.getByTestId('logs-list')
+    this.loadingState = this.getByTestId('logs-loading')
+    this.emptyState = this.getByTestId('logs-empty')
+    
     // Filters
-    this.levelFilter = page.getByTestId('logs-level-filter')
-    this.searchInput = page.getByTestId('logs-search-input')
-    this.sortOrderButton = page.getByTestId('logs-sort-order')
-    this.followModeToggle = page.getByTestId('logs-follow-mode')
+    this.levelFilter = this.getByTestId('logs-level-filter')
+    this.searchInput = this.getByTestId('logs-search')
+    this.dateFilter = this.getByTestId('logs-date-filter')
     
     // Actions
-    this.refreshButton = page.getByTestId('logs-refresh-button')
-    this.copyAllButton = page.getByTestId('logs-copy-all-button')
-    this.downloadButton = page.getByTestId('logs-download-button')
-    this.clearButton = page.getByTestId('logs-clear-button')
+    this.refreshBtn = this.getByTestId('logs-refresh-btn')
+    this.clearBtn = this.getByTestId('logs-clear-btn')
+    this.exportBtn = this.getByTestId('logs-export-btn')
+    this.copyBtn = this.getByTestId('logs-copy-btn')
     
-    // Log display
-    this.logContainer = page.getByTestId('logs-container')
-    this.logEntries = page.getByTestId('log-entry')
-    this.emptyState = page.getByText(/no logs/i)
+    // Log entry
+    this.logEntry = this.getByTestId('log-entry')
     
-    // Page elements
-    this.pageTitle = page.getByRole('heading', { name: /logs|application logs/i })
-    this.loadingIndicator = page.locator('.q-spinner')
+    // Fallbacks
+    this.pageTitleFallback = page.getByRole('heading', { name: 'Logs' })
   }
 
   async goto() {
@@ -39,160 +40,69 @@ export class LogsPage extends BasePage {
     return this.page.url().includes('/logs')
   }
 
-  async waitForLoad() {
-    await this.pageTitle.waitFor({ state: 'visible' })
+  /**
+   * Get log entry count
+   */
+  async getLogCount() {
+    return this.logEntry.count()
   }
 
   /**
-   * Filter by log level
-   * @param {'all' | 'debug' | 'info' | 'warning' | 'error'} level 
+   * Filter by level
    */
   async filterByLevel(level) {
-    const filter = await this.levelFilter.isVisible().catch(() => false)
-      ? this.levelFilter
-      : this.page.getByLabel(/level/i)
-    await filter.click()
-    await this.page.getByRole('option', { name: new RegExp(level, 'i') }).click()
+    await this.levelFilter.click()
+    await this.page.getByRole('option', { name: level }).click()
   }
 
   /**
    * Search logs
-   * @param {string} query 
    */
   async search(query) {
-    const input = await this.searchInput.isVisible().catch(() => false)
-      ? this.searchInput
-      : this.page.getByPlaceholder(/search/i)
-    await input.fill(query)
-  }
-
-  /**
-   * Clear search
-   */
-  async clearSearch() {
-    const input = await this.searchInput.isVisible().catch(() => false)
-      ? this.searchInput
-      : this.page.getByPlaceholder(/search/i)
-    await input.clear()
-  }
-
-  /**
-   * Toggle sort order (newest/oldest first)
-   */
-  async toggleSortOrder() {
-    const btn = await this.sortOrderButton.isVisible().catch(() => false)
-      ? this.sortOrderButton
-      : this.page.getByRole('button', { name: /sort|order/i })
-    await btn.click()
-  }
-
-  /**
-   * Toggle follow mode (auto-scroll)
-   */
-  async toggleFollowMode() {
-    const toggle = await this.followModeToggle.isVisible().catch(() => false)
-      ? this.followModeToggle
-      : this.page.getByLabel(/follow/i)
-    await toggle.click()
+    const searchInput = this.searchInput.or(this.page.getByPlaceholder('Search logs'))
+    await searchInput.fill(query)
+    await this.page.waitForTimeout(300)
   }
 
   /**
    * Refresh logs
    */
   async refresh() {
-    const btn = await this.refreshButton.isVisible().catch(() => false)
-      ? this.refreshButton
-      : this.page.getByRole('button', { name: /refresh/i })
-    await btn.click()
-  }
-
-  /**
-   * Copy all logs to clipboard
-   */
-  async copyAll() {
-    const btn = await this.copyAllButton.isVisible().catch(() => false)
-      ? this.copyAllButton
-      : this.page.getByRole('button', { name: /copy/i })
-    await btn.click()
-  }
-
-  /**
-   * Download logs
-   */
-  async download() {
-    const btn = await this.downloadButton.isVisible().catch(() => false)
-      ? this.downloadButton
-      : this.page.getByRole('button', { name: /download/i })
-    await btn.click()
+    await this.refreshBtn.click()
   }
 
   /**
    * Clear logs
    */
   async clearLogs() {
-    const btn = await this.clearButton.isVisible().catch(() => false)
-      ? this.clearButton
-      : this.page.getByRole('button', { name: /clear/i })
-    await btn.click()
-    // Confirm if needed
-    const confirmBtn = this.page.getByRole('button', { name: /confirm|yes/i })
-    if (await confirmBtn.isVisible()) {
-      await confirmBtn.click()
-    }
+    await this.clearBtn.click()
   }
 
   /**
-   * Get count of visible log entries
+   * Export logs
    */
-  async getLogCount() {
-    const entries = this.page.locator('[data-testid="log-entry"], .log-entry, .log-line')
-    return await entries.count()
+  async exportLogs() {
+    await this.exportBtn.click()
   }
 
   /**
-   * Get log entry data
-   * @param {number} index - 0-based index
+   * Copy logs to clipboard
    */
-  async getLogEntry(index) {
-    const entries = this.page.locator('[data-testid="log-entry"], .log-entry, .log-line')
-    const entry = entries.nth(index)
-    return {
-      text: await entry.textContent(),
-      level: await this.getLogEntryLevel(entry)
-    }
+  async copyLogs() {
+    await this.copyBtn.click()
   }
 
   /**
-   * Get log level from entry element
-   * @param {import('@playwright/test').Locator} entry 
+   * Check if loading
    */
-  async getLogEntryLevel(entry) {
-    const classes = await entry.getAttribute('class') || ''
-    const text = await entry.textContent() || ''
-    
-    if (classes.includes('error') || text.includes('ERROR')) return 'error'
-    if (classes.includes('warning') || text.includes('WARNING')) return 'warning'
-    if (classes.includes('info') || text.includes('INFO')) return 'info'
-    if (classes.includes('debug') || text.includes('DEBUG')) return 'debug'
-    return 'unknown'
+  async isLoading() {
+    return this.loadingState.isVisible().catch(() => false)
   }
 
   /**
-   * Check if logs contain text
-   * @param {string} text 
-   */
-  async containsText(text) {
-    const container = await this.logContainer.isVisible().catch(() => false)
-      ? this.logContainer
-      : this.page.locator('.logs-container, .log-viewer')
-    const content = await container.textContent()
-    return content.includes(text)
-  }
-
-  /**
-   * Check if empty state is shown
+   * Check if empty
    */
   async isEmpty() {
-    return await this.emptyState.isVisible()
+    return this.emptyState.isVisible().catch(() => false)
   }
 }

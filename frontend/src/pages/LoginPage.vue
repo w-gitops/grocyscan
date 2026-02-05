@@ -12,8 +12,8 @@
             label="Username"
             outlined
             dense
-            data-testid="login-username"
             :rules="[v => !!v || 'Required']"
+            data-testid="login-username"
           />
           <q-input
             v-model="password"
@@ -21,15 +21,17 @@
             label="Password"
             outlined
             dense
-            data-testid="login-password"
             :rules="[v => !!v || 'Required']"
+            data-testid="login-password"
           >
             <template v-slot:append>
-              <q-icon
-                :name="showPassword ? 'visibility_off' : 'visibility'"
-                class="cursor-pointer"
-                data-testid="login-password-toggle"
+              <q-btn
+                flat
+                round
+                dense
+                :icon="showPassword ? 'visibility_off' : 'visibility'"
                 @click="showPassword = !showPassword"
+                data-testid="login-password-toggle"
               />
             </template>
           </q-input>

@@ -1,7 +1,5 @@
 /**
  * Scan Page Object
- * 
- * Encapsulates all interactions with the barcode scanning page.
  */
 import { BasePage } from './base.page.js'
 
@@ -9,38 +7,52 @@ export class ScanPage extends BasePage {
   constructor(page) {
     super(page)
     
-    // Scanner elements
-    this.barcodeInput = page.getByTestId('scan-barcode-input')
-    this.submitButton = page.getByTestId('scan-submit')
-    this.cameraButton = page.getByTestId('scan-camera-button')
-    this.scannerGunModeToggle = page.getByTestId('scan-gun-mode')
+    // Page container
+    this.pageContainer = this.getByTestId('scan-page')
     
-    // Feedback area
-    this.feedbackArea = page.getByTestId('scan-feedback')
-    this.feedbackMessage = page.getByTestId('scan-feedback-message')
-    
-    // Location selector
-    this.locationSelector = page.getByTestId('scan-location-selector')
-    this.locationDropdown = page.getByTestId('scan-location-dropdown')
+    // Device registration
+    this.devicePrompt = this.getByTestId('scan-device-prompt')
+    this.deviceRegisterBtn = this.getByTestId('scan-device-register-btn')
     
     // Action mode
-    this.actionModeSelector = page.getByTestId('scan-action-mode')
+    this.actionModeToggle = this.getByTestId('scan-action-mode')
+    
+    // Location selector
+    this.locationSelector = this.getByTestId('scan-location-selector')
+    
+    // Barcode input
+    this.barcodeInput = this.getByTestId('scan-barcode-input')
+    this.cameraButton = this.getByTestId('scan-camera-button')
+    this.lookupButton = this.getByTestId('scan-lookup-btn')
+    
+    // Result display
+    this.resultCard = this.getByTestId('scan-result-card')
+    this.quickAddBtn = this.getByTestId('scan-quick-add')
+    this.quickConsumeBtn = this.getByTestId('scan-quick-consume')
     
     // Recent scans
-    this.recentScans = page.getByTestId('scan-recent-list')
-    this.recentScansEmpty = page.getByText('No recent scans')
+    this.recentScansCard = this.getByTestId('scan-recent-card')
+    this.recentScansList = this.getByTestId('scan-recent-list')
+    this.recentScanItem = this.getByTestId('scan-recent-item')
     
-    // Camera dialog
-    this.cameraDialog = page.getByRole('dialog')
-    this.cameraDialogClose = page.getByRole('button', { name: /cancel|close/i })
+    // Device dialog
+    this.deviceDialog = this.getByTestId('device-dialog')
+    this.deviceDialogCard = this.getByTestId('device-dialog-card')
+    this.deviceNameInput = this.getByTestId('device-name-input')
+    this.deviceRegisterSubmit = this.getByTestId('device-register-submit')
     
     // Product review dialog
-    this.reviewDialog = page.getByTestId('product-review-dialog')
-    this.reviewDialogTitle = page.getByText('Review Product')
+    this.reviewDialog = this.getByTestId('product-review-dialog')
+    this.reviewNameInput = this.getByTestId('product-review-name-input')
+    this.reviewQuantityInput = this.getByTestId('product-review-quantity')
+    this.reviewLocationSelect = this.getByTestId('product-review-location')
+    this.reviewCancelBtn = this.getByTestId('product-review-cancel')
+    this.reviewConfirmBtn = this.getByTestId('product-review-confirm')
+    this.reviewCreateBtn = this.getByTestId('product-review-create')
     
     // Fallback selectors
-    this.barcodeInputFallback = page.getByPlaceholder(/scan|barcode/i)
-    this.pageTitle = page.getByRole('heading', { name: 'Scan' })
+    this.pageTitleFallback = page.getByRole('heading', { name: 'Scan' })
+    this.barcodeInputFallback = page.getByPlaceholder('Scan or enter barcode')
   }
 
   async goto() {
@@ -51,173 +63,109 @@ export class ScanPage extends BasePage {
     return this.page.url().includes('/scan')
   }
 
-  async waitForLoad() {
-    await this.pageTitle.waitFor({ state: 'visible' })
-  }
-
   /**
-   * Get the barcode input element (with fallback)
+   * Get barcode input (with fallback)
    */
-  async getBarcodeInput() {
-    const testId = await this.barcodeInput.isVisible().catch(() => false)
-    return testId ? this.barcodeInput : this.barcodeInputFallback
+  getBarcodeInput() {
+    return this.barcodeInput.or(this.barcodeInputFallback)
   }
 
   /**
-   * Enter a barcode into the input field
-   * @param {string} barcode 
+   * Enter a barcode
    */
   async enterBarcode(barcode) {
-    const input = await this.getBarcodeInput()
-    await input.fill(barcode)
+    await this.getBarcodeInput().fill(barcode)
   }
 
   /**
-   * Submit the barcode (click submit button)
+   * Submit barcode lookup
    */
-  async submitBarcode() {
-    const submitBtn = await this.submitButton.isVisible().catch(() => false)
-      ? this.submitButton
-      : this.page.getByRole('button', { name: /search|submit|look/i })
-    await submitBtn.click()
+  async lookup() {
+    await this.lookupButton.click()
   }
 
   /**
-   * Scan a barcode (enter + submit)
-   * @param {string} barcode 
+   * Enter barcode and lookup
    */
   async scanBarcode(barcode) {
     await this.enterBarcode(barcode)
-    await this.submitBarcode()
+    await this.lookup()
   }
 
   /**
-   * Scan barcode using Enter key
-   * @param {string} barcode 
+   * Toggle camera
    */
-  async scanBarcodeWithEnter(barcode) {
-    const input = await this.getBarcodeInput()
-    await input.fill(barcode)
-    await input.press('Enter')
+  async toggleCamera() {
+    await this.cameraButton.click()
   }
 
   /**
-   * Open camera scanner dialog
-   */
-  async openCameraScanner() {
-    const cameraBtn = await this.cameraButton.isVisible().catch(() => false)
-      ? this.cameraButton
-      : this.page.locator('[aria-label*="camera"], button:has(svg[data-icon="qrcode"])')
-    await cameraBtn.click()
-  }
-
-  /**
-   * Close camera dialog
-   */
-  async closeCameraDialog() {
-    await this.cameraDialogClose.click()
-  }
-
-  /**
-   * Check if camera dialog is open
-   */
-  async isCameraDialogOpen() {
-    return await this.cameraDialog.isVisible()
-  }
-
-  /**
-   * Select a location from the dropdown
-   * @param {string} locationName 
-   */
-  async selectLocation(locationName) {
-    await this.locationSelector.click()
-    await this.page.getByRole('option', { name: locationName }).click()
-  }
-
-  /**
-   * Set action mode (Add Stock, Consume, Transfer)
-   * @param {'add' | 'consume' | 'transfer'} mode 
+   * Set action mode
+   * @param {'add'|'consume'|'transfer'} mode
    */
   async setActionMode(mode) {
-    const modeSelector = await this.actionModeSelector.isVisible().catch(() => false)
-      ? this.actionModeSelector
-      : this.page.locator('.q-btn-toggle, .q-tabs')
-    
-    const modeLabels = {
-      add: /add|stock/i,
-      consume: /consume/i,
-      transfer: /transfer/i
-    }
-    
-    await modeSelector.getByText(modeLabels[mode]).click()
+    const modeMap = { add: 'Add Stock', consume: 'Consume', transfer: 'Transfer' }
+    await this.page.getByRole('button', { name: modeMap[mode] }).click()
   }
 
   /**
-   * Toggle scanner gun mode
+   * Check if device registration prompt is shown
    */
-  async toggleScannerGunMode() {
-    const toggle = await this.scannerGunModeToggle.isVisible().catch(() => false)
-      ? this.scannerGunModeToggle
-      : this.page.locator('[aria-label*="gun mode"], [title*="gun mode"]')
-    await toggle.click()
+  async hasDevicePrompt() {
+    return this.devicePrompt.isVisible().catch(() => 
+      this.page.getByText('Register this device').isVisible()
+    )
   }
 
   /**
-   * Wait for scan feedback to appear
-   * @param {'success' | 'error' | 'warning' | 'info'} type 
+   * Open device registration dialog
    */
-  async waitForFeedback(type = null) {
-    await this.feedbackArea.waitFor({ state: 'visible' })
-    if (type) {
-      const colorClass = {
-        success: 'green',
-        error: 'red',
-        warning: 'orange',
-        info: 'blue'
-      }[type]
-      await this.page.locator(`[class*="${colorClass}"]`).waitFor({ state: 'visible' })
-    }
+  async openDeviceDialog() {
+    await this.deviceRegisterBtn.click()
   }
 
   /**
-   * Get feedback message text
+   * Register device
    */
-  async getFeedbackMessage() {
-    const msg = await this.feedbackMessage.isVisible().catch(() => false)
-      ? this.feedbackMessage
-      : this.feedbackArea
-    return await msg.textContent()
+  async registerDevice(name) {
+    await this.openDeviceDialog()
+    await this.deviceNameInput.fill(name)
+    await this.deviceRegisterSubmit.click()
   }
 
   /**
-   * Check if product review dialog is open
+   * Check if review dialog is open
    */
   async isReviewDialogOpen() {
-    const dialog = await this.reviewDialog.isVisible().catch(() => false)
-    if (dialog) return true
-    return await this.reviewDialogTitle.isVisible().catch(() => false)
+    return this.reviewDialog.isVisible().catch(() => false)
   }
 
   /**
-   * Wait for product review dialog
+   * Confirm product in review dialog
    */
-  async waitForReviewDialog() {
-    await this.page.waitForSelector('[role="dialog"]', { state: 'visible' })
+  async confirmReview() {
+    await this.reviewConfirmBtn.click()
   }
 
   /**
-   * Get count of recent scans
+   * Cancel review dialog
+   */
+  async cancelReview() {
+    await this.reviewCancelBtn.click()
+  }
+
+  /**
+   * Create product from review dialog
+   */
+  async createProduct() {
+    await this.reviewCreateBtn.click()
+  }
+
+  /**
+   * Get recent scans count
    */
   async getRecentScansCount() {
-    const list = await this.recentScans.isVisible().catch(() => false)
-    if (!list) return 0
-    return await this.recentScans.locator('> *').count()
-  }
-
-  /**
-   * Check if recent scans list is empty
-   */
-  async hasNoRecentScans() {
-    return await this.recentScansEmpty.isVisible()
+    const items = this.page.locator('[data-testid="scan-recent-item"]')
+    return items.count()
   }
 }

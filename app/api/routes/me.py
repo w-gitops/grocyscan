@@ -454,9 +454,16 @@ async def get_product_detail_me(
         )
         stock_list = [
             {
+                "id": str(row[0].id),
                 "location_id": str(row[0].location_id) if row[0].location_id else None,
                 "location_name": row[1].name if row[1] else "Unspecified",
                 "quantity": row[0].quantity,
+                "expiration_date": str(row[0].expiration_date) if row[0].expiration_date else None,
+                "stock_id": row[0].stock_id,
+                "price": float(row[0].price) if row[0].price else None,
+                "open": row[0].open,
+                "opened_date": str(row[0].opened_date) if row[0].opened_date else None,
+                "note": row[0].note,
             }
             for row in stock_r.all()
         ]
@@ -641,8 +648,21 @@ class MeLocationCreate(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=255)
     location_type: str = Field(default="shelf", max_length=50)
+    parent_id: UUID | None = None
     description: str | None = None
     is_freezer: bool = False
+    sort_order: int = 0
+
+
+class MeLocationUpdate(BaseModel):
+    """Update location request for /api/me/locations/{id}."""
+
+    name: str | None = Field(None, min_length=1, max_length=255)
+    location_type: str | None = Field(None, max_length=50)
+    parent_id: UUID | None = None
+    description: str | None = None
+    is_freezer: bool | None = None
+    sort_order: int | None = None
 
 
 @router.post("/locations", response_model=LocationResponse, status_code=status.HTTP_201_CREATED)
@@ -652,20 +672,134 @@ async def create_location_me(
     x_device_id: str | None = Header(None, alias="X-Device-ID"),
 ) -> LocationResponse:
     """Create a homebot location for device tenant (session auth)."""
+    from app.db.homebot_models import HomebotLocationClosure
     async for session, tenant_id, _ in _session_device_context(request, x_device_id):
         await session.execute(_set_tenant_id_stmt(tenant_id))
+
+        # Validate parent if provided
+        if body.parent_id:
+            pr = await session.execute(
+                select(HomebotLocation).where(
+                    HomebotLocation.id == body.parent_id,
+                    HomebotLocation.tenant_id == tenant_id,
+                )
+            )
+            if not pr.scalar_one_or_none():
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent location not found")
+
         loc = HomebotLocation(
             tenant_id=tenant_id,
             name=body.name,
             location_type=body.location_type,
+            parent_id=body.parent_id,
             description=body.description,
             is_freezer=body.is_freezer,
-            sort_order=0,
+            sort_order=body.sort_order,
         )
         session.add(loc)
+        await session.flush()
+
+        # Build closure table entries
+        session.add(HomebotLocationClosure(ancestor_id=loc.id, descendant_id=loc.id, depth=0))
+        if body.parent_id:
+            # Add closure rows from all ancestors of parent to this new location
+            result = await session.execute(
+                select(HomebotLocationClosure.ancestor_id, HomebotLocationClosure.depth).where(
+                    HomebotLocationClosure.descendant_id == body.parent_id
+                )
+            )
+            for ancestor_id, depth in result.all():
+                session.add(
+                    HomebotLocationClosure(
+                        ancestor_id=ancestor_id,
+                        descendant_id=loc.id,
+                        depth=depth + 1,
+                    )
+                )
+
         await session.commit()
         await session.refresh(loc)
         return LocationResponse.model_validate(loc)
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
+
+
+@router.patch("/locations/{location_id}", response_model=LocationResponse)
+async def update_location_me(
+    location_id: UUID,
+    request: Request,
+    body: MeLocationUpdate,
+    x_device_id: str | None = Header(None, alias="X-Device-ID"),
+) -> LocationResponse:
+    """Update a homebot location (session auth)."""
+    async for session, tenant_id, _ in _session_device_context(request, x_device_id):
+        await session.execute(_set_tenant_id_stmt(tenant_id))
+        r = await session.execute(
+            select(HomebotLocation).where(
+                HomebotLocation.id == location_id,
+                HomebotLocation.tenant_id == tenant_id,
+            )
+        )
+        loc = r.scalar_one_or_none()
+        if not loc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Location not found")
+
+        data = body.model_dump(exclude_unset=True)
+        for key, value in data.items():
+            setattr(loc, key, value)
+        await session.commit()
+        await session.refresh(loc)
+        return LocationResponse.model_validate(loc)
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
+
+
+@router.delete("/locations/{location_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_location_me(
+    location_id: UUID,
+    request: Request,
+    x_device_id: str | None = Header(None, alias="X-Device-ID"),
+) -> None:
+    """Delete a homebot location (session auth). Fails if has children or stock."""
+    from app.db.homebot_models import HomebotLocationClosure
+    from sqlalchemy import delete
+    async for session, tenant_id, _ in _session_device_context(request, x_device_id):
+        await session.execute(_set_tenant_id_stmt(tenant_id))
+        r = await session.execute(
+            select(HomebotLocation).where(
+                HomebotLocation.id == location_id,
+                HomebotLocation.tenant_id == tenant_id,
+            )
+        )
+        loc = r.scalar_one_or_none()
+        if not loc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Location not found")
+
+        # Check for children
+        cr = await session.execute(
+            select(HomebotLocation).where(HomebotLocation.parent_id == location_id)
+        )
+        if cr.scalar_one_or_none():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete location with children")
+
+        # Check for stock
+        sr = await session.execute(
+            select(HomebotStock).where(HomebotStock.location_id == location_id)
+        )
+        if sr.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete location with stock. Move or consume stock first.",
+            )
+
+        # Delete closure rows
+        await session.execute(
+            delete(HomebotLocationClosure).where(
+                (HomebotLocationClosure.ancestor_id == location_id) | (HomebotLocationClosure.descendant_id == location_id)
+            )
+        )
+
+        await session.delete(loc)
+        await session.commit()
+        return
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
 
 
@@ -769,4 +903,374 @@ async def consume_stock_me(
             )
         await session.commit()
         return {"status": "ok", "message": "Stock consumed"}
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
+
+
+# Phase 3.5 Stock Operations
+
+
+class MeStockTransferBody(BaseModel):
+    """Transfer stock request."""
+
+    product_id: UUID
+    from_location_id: UUID
+    to_location_id: UUID
+    quantity: int = Field(..., gt=0)
+
+
+class MeStockInventoryBody(BaseModel):
+    """Set stock to specific amount (inventory correction)."""
+
+    product_id: UUID
+    new_amount: int = Field(..., ge=0)
+    location_id: UUID | None = None
+
+
+class MeStockOpenBody(BaseModel):
+    """Mark stock entry as opened."""
+
+    stock_entry_id: UUID
+
+
+class MeStockEntryEditBody(BaseModel):
+    """Edit stock entry."""
+
+    amount: int | None = Field(None, ge=0)
+    location_id: UUID | None = None
+    note: str | None = None
+    open: bool | None = None
+
+
+@router.post("/stock/transfer")
+async def transfer_stock_me(
+    request: Request,
+    body: MeStockTransferBody,
+    x_device_id: str | None = Header(None, alias="X-Device-ID"),
+) -> dict:
+    """Transfer stock between locations (session auth)."""
+    async for session, tenant_id, _ in _session_device_context(request, x_device_id):
+        await session.execute(_set_tenant_id_stmt(tenant_id))
+
+        # Get source stock
+        r = await session.execute(
+            select(HomebotStock).where(
+                HomebotStock.tenant_id == tenant_id,
+                HomebotStock.product_id == body.product_id,
+                HomebotStock.location_id == body.from_location_id,
+            )
+        )
+        from_row = r.scalar_one_or_none()
+        if not from_row or from_row.quantity < body.quantity:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Insufficient stock at source location",
+            )
+        from_row.quantity -= body.quantity
+
+        # Get or create destination stock
+        r2 = await session.execute(
+            select(HomebotStock).where(
+                HomebotStock.tenant_id == tenant_id,
+                HomebotStock.product_id == body.product_id,
+                HomebotStock.location_id == body.to_location_id,
+            )
+        )
+        to_row = r2.scalar_one_or_none()
+        if to_row:
+            to_row.quantity += body.quantity
+        else:
+            to_row = HomebotStock(
+                tenant_id=tenant_id,
+                product_id=body.product_id,
+                location_id=body.to_location_id,
+                quantity=body.quantity,
+                stock_id=str(uuid.uuid4()),
+            )
+            session.add(to_row)
+            await session.flush()
+
+        # Create correlated transactions
+        correlation_id = uuid.uuid4()
+        session.add(
+            HomebotStockTransaction(
+                tenant_id=tenant_id,
+                stock_id=from_row.id,
+                product_id=body.product_id,
+                transaction_type="transfer_from",
+                quantity=-body.quantity,
+                from_location_id=body.from_location_id,
+                to_location_id=body.to_location_id,
+                correlation_id=correlation_id,
+            )
+        )
+        session.add(
+            HomebotStockTransaction(
+                tenant_id=tenant_id,
+                stock_id=to_row.id,
+                product_id=body.product_id,
+                transaction_type="transfer_to",
+                quantity=body.quantity,
+                from_location_id=body.from_location_id,
+                to_location_id=body.to_location_id,
+                correlation_id=correlation_id,
+            )
+        )
+        await session.commit()
+        return {"status": "ok", "message": "Stock transferred"}
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
+
+
+@router.post("/stock/inventory")
+async def inventory_stock_me(
+    request: Request,
+    body: MeStockInventoryBody,
+    x_device_id: str | None = Header(None, alias="X-Device-ID"),
+) -> dict:
+    """Set stock to specific amount (inventory correction, session auth)."""
+    async for session, tenant_id, device in _session_device_context(request, x_device_id):
+        await session.execute(_set_tenant_id_stmt(tenant_id))
+        location_id = body.location_id or device.default_location_id
+
+        r = await session.execute(
+            select(HomebotStock).where(
+                HomebotStock.tenant_id == tenant_id,
+                HomebotStock.product_id == body.product_id,
+                HomebotStock.location_id == location_id,
+            )
+        )
+        row = r.scalar_one_or_none()
+        if row:
+            current = row.quantity
+            diff = body.new_amount - current
+            row.quantity = body.new_amount
+            session.add(
+                HomebotStockTransaction(
+                    tenant_id=tenant_id,
+                    stock_id=row.id,
+                    product_id=body.product_id,
+                    transaction_type="inventory-correction",
+                    quantity=diff,
+                    to_location_id=location_id,
+                )
+            )
+        else:
+            if body.new_amount <= 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot set non-existing stock to zero or negative",
+                )
+            row = HomebotStock(
+                tenant_id=tenant_id,
+                product_id=body.product_id,
+                location_id=location_id,
+                quantity=body.new_amount,
+                stock_id=str(uuid.uuid4()),
+            )
+            session.add(row)
+            await session.flush()
+            session.add(
+                HomebotStockTransaction(
+                    tenant_id=tenant_id,
+                    stock_id=row.id,
+                    product_id=body.product_id,
+                    transaction_type="inventory-correction",
+                    quantity=body.new_amount,
+                    to_location_id=location_id,
+                )
+            )
+        await session.commit()
+        await session.refresh(row)
+        return {"status": "ok", "quantity": row.quantity}
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
+
+
+@router.post("/stock/open")
+async def open_stock_me(
+    request: Request,
+    body: MeStockOpenBody,
+    x_device_id: str | None = Header(None, alias="X-Device-ID"),
+) -> dict:
+    """Mark stock entry as opened (session auth)."""
+    from datetime import date as date_type
+
+    async for session, tenant_id, _ in _session_device_context(request, x_device_id):
+        await session.execute(_set_tenant_id_stmt(tenant_id))
+
+        r = await session.execute(
+            select(HomebotStock).where(
+                HomebotStock.id == body.stock_entry_id,
+                HomebotStock.tenant_id == tenant_id,
+            )
+        )
+        row = r.scalar_one_or_none()
+        if not row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stock entry not found")
+        if row.open:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Stock entry already opened")
+
+        row.open = True
+        row.opened_date = date_type.today()
+
+        session.add(
+            HomebotStockTransaction(
+                tenant_id=tenant_id,
+                stock_id=row.id,
+                product_id=row.product_id,
+                transaction_type="product-opened",
+                quantity=0,
+            )
+        )
+        await session.commit()
+        await session.refresh(row)
+        return {"status": "ok", "open": True, "opened_date": str(row.opened_date)}
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
+
+
+@router.patch("/stock/entries/{entry_id}")
+async def edit_stock_entry_me(
+    entry_id: UUID,
+    request: Request,
+    body: MeStockEntryEditBody,
+    x_device_id: str | None = Header(None, alias="X-Device-ID"),
+) -> dict:
+    """Edit stock entry (session auth)."""
+    from datetime import date as date_type
+
+    async for session, tenant_id, _ in _session_device_context(request, x_device_id):
+        await session.execute(_set_tenant_id_stmt(tenant_id))
+
+        r = await session.execute(
+            select(HomebotStock).where(
+                HomebotStock.id == entry_id,
+                HomebotStock.tenant_id == tenant_id,
+            )
+        )
+        row = r.scalar_one_or_none()
+        if not row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stock entry not found")
+
+        data = body.model_dump(exclude_unset=True)
+        if "amount" in data and data["amount"] is not None:
+            row.quantity = data["amount"]
+        if "location_id" in data:
+            row.location_id = data["location_id"]
+        if "note" in data:
+            row.note = data["note"]
+        if "open" in data and data["open"] is not None:
+            row.open = data["open"]
+            if data["open"] and not row.opened_date:
+                row.opened_date = date_type.today()
+
+        correlation_id = uuid.uuid4()
+        session.add(
+            HomebotStockTransaction(
+                tenant_id=tenant_id,
+                stock_id=row.id,
+                product_id=row.product_id,
+                transaction_type="stock-edit",
+                quantity=0,
+                correlation_id=correlation_id,
+                notes=str(data),
+            )
+        )
+
+        await session.commit()
+        await session.refresh(row)
+        return {"status": "ok", "quantity": row.quantity}
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
+
+
+@router.post("/stock/undo/{transaction_id}")
+async def undo_transaction_me(
+    transaction_id: UUID,
+    request: Request,
+    x_device_id: str | None = Header(None, alias="X-Device-ID"),
+) -> dict:
+    """Undo a stock transaction (session auth)."""
+    async for session, tenant_id, _ in _session_device_context(request, x_device_id):
+        await session.execute(_set_tenant_id_stmt(tenant_id))
+
+        r = await session.execute(
+            select(HomebotStockTransaction).where(
+                HomebotStockTransaction.id == transaction_id,
+                HomebotStockTransaction.tenant_id == tenant_id,
+            )
+        )
+        tx = r.scalar_one_or_none()
+        if not tx:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
+        if tx.undone:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transaction already undone")
+
+        # Get all related transactions via correlation_id
+        transactions = [tx]
+        if tx.correlation_id:
+            cr = await session.execute(
+                select(HomebotStockTransaction).where(
+                    HomebotStockTransaction.correlation_id == tx.correlation_id,
+                    HomebotStockTransaction.tenant_id == tenant_id,
+                )
+            )
+            transactions = list(cr.scalars().all())
+
+        now = datetime.now(timezone.utc)
+        for t in transactions:
+            if t.undone:
+                continue
+
+            # Reverse the effect on stock
+            if t.stock_id and t.quantity != 0:
+                sr = await session.execute(select(HomebotStock).where(HomebotStock.id == t.stock_id))
+                stock = sr.scalar_one_or_none()
+                if stock:
+                    stock.quantity -= t.quantity
+
+            # Mark as undone
+            t.undone = True
+            t.undone_timestamp = now
+
+        await session.commit()
+        return {"status": "ok", "message": f"Undone {len(transactions)} transaction(s)"}
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")
+
+
+@router.get("/stock/transactions")
+async def list_transactions_me(
+    request: Request,
+    product_id: UUID | None = None,
+    limit: int = 100,
+    x_device_id: str | None = Header(None, alias="X-Device-ID"),
+) -> list[dict]:
+    """List stock transactions (audit log, session auth)."""
+    async for session, tenant_id, _ in _session_device_context(request, x_device_id):
+        await session.execute(_set_tenant_id_stmt(tenant_id))
+
+        stmt = (
+            select(HomebotStockTransaction)
+            .where(HomebotStockTransaction.tenant_id == tenant_id)
+            .order_by(HomebotStockTransaction.created_at.desc())
+            .limit(limit)
+        )
+        if product_id:
+            stmt = stmt.where(HomebotStockTransaction.product_id == product_id)
+
+        result = await session.execute(stmt)
+        transactions = result.scalars().all()
+        return [
+            {
+                "id": str(t.id),
+                "stock_id": str(t.stock_id) if t.stock_id else None,
+                "product_id": str(t.product_id) if t.product_id else None,
+                "transaction_type": t.transaction_type,
+                "quantity": t.quantity,
+                "from_location_id": str(t.from_location_id) if t.from_location_id else None,
+                "to_location_id": str(t.to_location_id) if t.to_location_id else None,
+                "notes": t.notes,
+                "spoiled": t.spoiled,
+                "correlation_id": str(t.correlation_id) if t.correlation_id else None,
+                "undone": t.undone,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+            }
+            for t in transactions
+        ]
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No session")

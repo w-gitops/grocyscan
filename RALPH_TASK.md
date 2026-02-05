@@ -1,59 +1,46 @@
 ---
-task: Deprecate NiceGUI
-test_command: pytest tests/ -v --tb=short && cd frontend && npm run build
-browser_validation: false
+task: Homebot Phase 3.5 - Inventory Parity
+test_command: pytest tests/phase3_5/ tests/phase3/ tests/phase2/ -v --tb=short
+browser_validation: true
+browser_url: http://localhost:3335
 ---
 
-# Task: Deprecate and Remove NiceGUI
+# Task: Homebot Phase 3.5 - Inventory Parity
 
-Remove NiceGUI code, dependencies, and documentation references. Vue/Quasar is now the sole frontend.
+Full Grocy inventory parity - quantity units, stock operations, location UI, undo.
 
-**PRD Reference:** [prd/90.10-deprecate-nicegui.md](prd/90.10-deprecate-nicegui.md)
+**PRD Reference:** [prd/80.135-ralph-phase-3.5-inventory-parity.md](prd/80.135-ralph-phase-3.5-inventory-parity.md)
 
 ## Success Criteria
 
-### Code Removal
+### Database Schema (Migration 0011)
 
-- [ ] **[1] [CRITICAL]** Delete `app/ui/` directory entirely
-  - All 14 Python files removed
-  - Test: `ls app/ui/` returns "No such file or directory"
+- [x] **[1]** Quantity units table and product quantity unit FKs
+- [x] **[2]** Product best-before settings
+- [x] **[3]** Product advanced fields
+- [x] **[4]** Stock entry enhancements (decimal qty, stock_id, price, open, note)
+- [x] **[5]** Transaction log enhancements (user_id, correlation_id, undone)
+- [x] **[6]** Product groups table
 
-- [ ] **[2] [CRITICAL]** Remove NiceGUI from `app/main.py`
-  - Remove NiceGUI imports
-  - Remove `ui.run()` or NiceGUI mounting code
-  - Remove any NiceGUI-specific middleware
-  - Test: `grep -r "nicegui" app/main.py` returns nothing
+### Stock Operations API
 
-- [ ] **[3] [CRITICAL]** Remove NiceGUI from dependencies
-  - Remove from `requirements.txt`
-  - Remove from `pyproject.toml`
-  - Test: `grep nicegui requirements.txt` returns nothing
+- [x] **[7]** Inventory operation (set stock to specific amount)
+- [x] **[8]** Open product operation
+- [x] **[9]** Edit stock entry
+- [x] **[10]** Undo operation
+- [ ] **[11]** Freezer auto-adjust best-before dates
 
-- [ ] **[4] [CORE]** Clean up any remaining NiceGUI imports
-  - Check `app/api/routes/me.py` for NiceGUI references
-  - Remove any `from nicegui import` statements
-  - Test: `grep -r "from nicegui" app/` returns nothing
+### Location Management UI (Vue/Quasar)
 
-### Documentation Updates
+- [x] **[12]** Location list with hierarchy
+- [x] **[13]** Location CRUD in UI (edit/delete)
+- [x] **[14]** Reorder locations
 
-- [ ] **[5] [CRITICAL]** Update Phase 3 PRD
-  - Remove Option A (NiceGUI validation path)
-  - Make Option B (Vue/Quasar) the only path
-  - Update `browser_url` to `:3335` only
+### Stock Entry UI (Vue/Quasar)
 
-- [ ] **[6] [CORE]** Update architecture PRDs
-  - Update `prd/30.10-technical-architecture.md` frontend stack
-  - Update `prd/30.13-ui-specification.md` to Vue only
-  - Update `prd/40.15-deployment.md` if needed
-
-- [ ] **[7] [CORE]** Update feature PRDs
-  - Update `prd/feature-scanner-gun-mode.md` to Vue
-  - Update `prd/feature-product-name-search.md` to Vue
-
-- [ ] **[8] [FLEX]** Update project documentation
-  - Update `README.md` stack description
-  - Add entry to `CHANGELOG.md`
-  - Add decision to `prd/91.14-decision-log.md`
+- [x] **[15]** View stock entries for product
+- [x] **[16]** Move stock dialog
+- [x] **[17]** Inventory correction dialog
 
 ---
 
@@ -61,8 +48,8 @@ Remove NiceGUI code, dependencies, and documentation references. Vue/Quasar is n
 
 - **Deploy Target:** `192.168.200.37` via SSH (root)
 - **Install Path:** `/opt/grocyscan/`
-- **Port:** 3334 (API), 3335 (Vue frontend)
-- Vue/Quasar frontend has full feature parity
+- **Port:** 3334 (API), 3335 (Vue dev)
+- **Public URL:** `https://grocyscan.ssiops.com`
 
 ## Phase Navigation
 
@@ -71,5 +58,5 @@ Remove NiceGUI code, dependencies, and documentation references. Vue/Quasar is n
 | 1 | [Foundation](prd/80.11-ralph-phase-1-foundation.md) | Complete |
 | 2 | [Inventory](prd/80.12-ralph-phase-2-inventory.md) | Complete |
 | 3 | [Device & UI](prd/80.13-ralph-phase-3-device-ui.md) | Complete |
-| Maintenance | [Deprecate NiceGUI](prd/90.10-deprecate-nicegui.md) | **Current** |
+| 3.5 | [Inventory Parity](prd/80.135-ralph-phase-3.5-inventory-parity.md) | **Current** |
 | 4 | [Labels & QR](prd/80.14-ralph-phase-4-labels-qr.md) | Pending |

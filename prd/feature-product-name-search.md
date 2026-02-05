@@ -243,257 +243,163 @@ async def search_products(
 
 ### 5.2 UI Component
 
-**File: `app/ui/components/product_search.py`** (new file)
+**File: `frontend/src/components/ProductSearch.vue`**
 
-```python
-"""Product name search component for NiceGUI."""
+```vue
+<template>
+  <div class="product-search">
+    <q-input
+      v-model="query"
+      label="Product Name"
+      placeholder="Search products..."
+      clearable
+      debounce="300"
+      @update:model-value="handleSearch"
+    >
+      <template v-slot:prepend>
+        <q-icon name="search" />
+      </template>
+    </q-input>
 
-import asyncio
-from typing import Callable, Coroutine, Any, Union, List
-from nicegui import ui
-from pydantic import BaseModel
+    <!-- Minimum characters message -->
+    <div v-if="query.length > 0 && query.length < 2" class="q-mt-sm text-grey">
+      Type at least 2 characters to search
+    </div>
 
-class ProductSearchResult(BaseModel):
-    id: str
-    name: str
-    category: str | None
-    image_url: str | None
-    source: str
-    grocy_product_id: int | None
+    <!-- Loading state -->
+    <div v-else-if="loading" class="q-mt-md row justify-center items-center">
+      <q-spinner color="primary" />
+      <span class="q-ml-sm">Searching...</span>
+    </div>
 
-class ProductSearch:
-    """Product search component with debounced input and results list."""
-    
-    def __init__(
-        self,
-        on_select: Callable[[ProductSearchResult], Union[None, Coroutine[Any, Any, None]]],
-        debounce_ms: int = 300,
-    ) -> None:
-        self.on_select = on_select
-        self.debounce_ms = debounce_ms
-        self._input: ui.input | None = None
-        self._results_container: ui.column | None = None
-        self._search_task: asyncio.Task | None = None
-        self._results: List[ProductSearchResult] = []
+    <!-- No results -->
+    <q-card v-else-if="query.length >= 2 && !loading && results.length === 0" class="q-mt-md">
+      <q-card-section>
+        <div class="text-grey-7">No products found matching "{{ query }}"</div>
+        <div class="text-grey text-caption">Try a different search term or scan the barcode instead.</div>
+      </q-card-section>
+    </q-card>
 
-    def render(self) -> None:
-        """Render the search component."""
-        with ui.column().classes("w-full gap-2"):
-            self._input = ui.input(
-                label="Product Name",
-                placeholder="Search products...",
-                on_change=self._handle_input_change,
-            ).classes("w-full").props('clearable prepend-icon="search"')
-            
-            self._results_container = ui.column().classes("w-full gap-1")
-            
-            with self._results_container:
-                ui.label("Type at least 2 characters to search").classes(
-                    "text-gray-500 text-sm"
-                )
+    <!-- Results list -->
+    <div v-else-if="results.length > 0" class="q-mt-md">
+      <div class="text-caption text-grey-7 q-mb-sm">Search Results ({{ results.length }} found)</div>
+      
+      <q-card
+        v-for="result in results"
+        :key="result.id"
+        class="q-mb-sm cursor-pointer"
+        @click="$emit('select', result)"
+      >
+        <q-card-section horizontal>
+          <q-avatar square size="48px" class="q-mr-md">
+            <img v-if="result.image_url" :src="result.image_url" />
+            <q-icon v-else name="inventory_2" color="grey" />
+          </q-avatar>
+          
+          <div class="column flex-grow">
+            <div class="text-weight-medium">{{ result.name }}</div>
+            <div class="text-caption text-grey">
+              <span v-if="result.category">{{ result.category }} • </span>
+              From: {{ result.source }}
+            </div>
+          </div>
+          
+          <q-btn flat round icon="add" color="primary" @click.stop="$emit('select', result)" />
+        </q-card-section>
+      </q-card>
+    </div>
+  </div>
+</template>
 
-    async def _handle_input_change(self, e: Any) -> None:
-        """Handle search input changes with debouncing."""
-        # Cancel previous search task
-        if self._search_task and not self._search_task.done():
-            self._search_task.cancel()
-        
-        query = e.value.strip() if e.value else ""
-        
-        if len(query) < 2:
-            self._show_minimum_chars_message()
-            return
-        
-        # Debounce: wait before searching
-        self._search_task = asyncio.create_task(
-            self._debounced_search(query)
-        )
+<script setup>
+import { ref } from 'vue'
+import { api } from '../services/api'
 
-    async def _debounced_search(self, query: str) -> None:
-        """Execute search after debounce delay."""
-        await asyncio.sleep(self.debounce_ms / 1000)
-        await self._execute_search(query)
+const emit = defineEmits(['select'])
 
-    async def _execute_search(self, query: str) -> None:
-        """Execute the product search API call."""
-        self._show_loading()
-        
-        try:
-            # Call search API
-            response = await self._call_search_api(query)
-            self._results = response.get("results", [])
-            self._display_results(query)
-        except Exception as e:
-            self._show_error(str(e))
+const query = ref('')
+const results = ref([])
+const loading = ref(false)
 
-    async def _call_search_api(self, query: str) -> dict:
-        """Call the product search API endpoint."""
-        import httpx
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "/api/products/search",
-                json={"query": query, "include_grocy": True, "limit": 20},
-            )
-            response.raise_for_status()
-            return response.json()
+const handleSearch = async (value) => {
+  if (value.length < 2) {
+    results.value = []
+    return
+  }
 
-    def _display_results(self, query: str) -> None:
-        """Display search results."""
-        self._results_container.clear()
-        
-        if not self._results:
-            with self._results_container:
-                with ui.card().classes("w-full p-4"):
-                    ui.label(f'No products found matching "{query}"').classes(
-                        "text-gray-600"
-                    )
-                    ui.label(
-                        "Try a different search term or scan the barcode instead."
-                    ).classes("text-gray-500 text-sm")
-            return
-        
-        with self._results_container:
-            ui.label(f"Search Results ({len(self._results)} found)").classes(
-                "text-sm text-gray-600 font-medium"
-            )
-            
-            for result in self._results:
-                self._render_result_card(result)
-
-    def _render_result_card(self, result: dict) -> None:
-        """Render a single search result card."""
-        with ui.card().classes("w-full cursor-pointer hover:bg-gray-50").on(
-            "click", lambda r=result: self._handle_select(r)
-        ):
-            with ui.row().classes("w-full items-center gap-3 p-2"):
-                # Image thumbnail
-                if result.get("image_url"):
-                    ui.image(result["image_url"]).classes("w-12 h-12 object-cover rounded")
-                else:
-                    with ui.element("div").classes(
-                        "w-12 h-12 bg-gray-200 rounded flex items-center justify-center"
-                    ):
-                        ui.icon("inventory_2").classes("text-gray-400")
-                
-                # Product info
-                with ui.column().classes("flex-grow gap-0"):
-                    ui.label(result["name"]).classes("font-medium")
-                    with ui.row().classes("gap-2 text-sm text-gray-500"):
-                        if result.get("category"):
-                            ui.label(result["category"])
-                            ui.label("•")
-                        ui.label(f"From: {result['source'].title()}")
-                
-                # Add button
-                ui.button(icon="add", on_click=lambda r=result: self._handle_select(r)).props(
-                    "flat round color=primary"
-                )
-
-    async def _handle_select(self, result: dict) -> None:
-        """Handle product selection."""
-        import inspect
-        product = ProductSearchResult(**result)
-        callback_result = self.on_select(product)
-        if inspect.iscoroutine(callback_result):
-            await callback_result
-
-    def _show_loading(self) -> None:
-        """Show loading state."""
-        self._results_container.clear()
-        with self._results_container:
-            with ui.row().classes("w-full justify-center p-4"):
-                ui.spinner()
-                ui.label("Searching...").classes("ml-2")
-
-    def _show_minimum_chars_message(self) -> None:
-        """Show minimum characters message."""
-        self._results_container.clear()
-        with self._results_container:
-            ui.label("Type at least 2 characters to search").classes(
-                "text-gray-500 text-sm"
-            )
-
-    def _show_error(self, message: str) -> None:
-        """Show error message."""
-        self._results_container.clear()
-        with self._results_container:
-            ui.label(f"Search error: {message}").classes("text-red-500")
+  loading.value = true
+  try {
+    const response = await api.post('/api/products/search', {
+      query: value,
+      include_grocy: true,
+      limit: 20
+    })
+    results.value = response.data.results
+  } catch (error) {
+    console.error('Search error:', error)
+    results.value = []
+  } finally {
+    loading.value = false
+  }
+}
+</script>
 ```
 
 ### 5.3 Scan Page Integration
 
-**File: `app/ui/pages/scan.py`**
+**File: `frontend/src/pages/ScanPage.vue`**
 
-```python
-from app.ui.components.product_search import ProductSearch, ProductSearchResult
+```vue
+<template>
+  <q-page class="q-pa-md">
+    <!-- Mode toggle -->
+    <q-btn-toggle
+      v-model="scanMode"
+      toggle-color="primary"
+      :options="[
+        { label: 'Scan Barcode', value: 'barcode', icon: 'qr_code_scanner' },
+        { label: 'Search by Name', value: 'search', icon: 'search' }
+      ]"
+      class="q-mb-md"
+    />
 
-class ScanPage:
-    def __init__(self):
-        # ... existing code ...
-        self._scan_mode: str = "barcode"  # "barcode" or "search"
-        self._product_search: ProductSearch | None = None
+    <!-- Barcode mode -->
+    <BarcodeScanner v-if="scanMode === 'barcode'" @scan="handleScan" />
 
-    def render(self) -> None:
-        # ... header code ...
-        
-        with ui.card().classes("w-full"):
-            # Mode toggle
-            with ui.row().classes("w-full gap-2 mb-4"):
-                ui.button(
-                    "Scan Barcode",
-                    icon="qr_code_scanner",
-                    on_click=lambda: self._set_mode("barcode"),
-                ).props(
-                    "color=primary" if self._scan_mode == "barcode" else "flat"
-                )
-                ui.button(
-                    "Search by Name",
-                    icon="search",
-                    on_click=lambda: self._set_mode("search"),
-                ).props(
-                    "color=primary" if self._scan_mode == "search" else "flat"
-                )
-            
-            # Mode-specific content
-            self._mode_container = ui.column().classes("w-full")
-            self._render_mode_content()
+    <!-- Search mode -->
+    <ProductSearch v-else @select="handleProductSelect" />
 
-    def _set_mode(self, mode: str) -> None:
-        """Switch between barcode and search modes."""
-        self._scan_mode = mode
-        self._render_mode_content()
+    <!-- Review popup -->
+    <ReviewPopup ref="reviewPopup" @confirm="handleConfirm" @cancel="handleCancel" />
+  </q-page>
+</template>
 
-    def _render_mode_content(self) -> None:
-        """Render content for current mode."""
-        self._mode_container.clear()
-        
-        with self._mode_container:
-            if self._scan_mode == "barcode":
-                self.scanner = BarcodeScanner(on_scan=self.handle_scan)
-                self.scanner.render()
-            else:
-                self._product_search = ProductSearch(
-                    on_select=self._handle_product_select
-                )
-                self._product_search.render()
+<script setup>
+import { ref } from 'vue'
+import BarcodeScanner from '../components/BarcodeScanner.vue'
+import ProductSearch from '../components/ProductSearch.vue'
+import ReviewPopup from '../components/ReviewPopup.vue'
 
-    async def _handle_product_select(self, product: ProductSearchResult) -> None:
-        """Handle product selection from search results."""
-        # Create scan-like data structure for review popup
-        scan_data = {
-            "barcode": None,  # No barcode for name search
-            "product": {
-                "name": product.name,
-                "category": product.category,
-                "image_url": product.image_url,
-                "grocy_product_id": product.grocy_product_id,
-            },
-            "source": product.source,
-            "is_name_search": True,
-        }
-        
-        # Open review popup
-        self.review_popup.open(scan_data)
+const scanMode = ref('barcode')
+const reviewPopup = ref(null)
+
+const handleProductSelect = (product) => {
+  // Create scan-like data structure for review popup
+  const scanData = {
+    barcode: null, // No barcode for name search
+    product: {
+      name: product.name,
+      category: product.category,
+      image_url: product.image_url,
+      grocy_product_id: product.grocy_product_id
+    },
+    source: product.source,
+    is_name_search: true
+  }
+
+  reviewPopup.value.open(scanData)
+}
+</script>
 ```
 
 ---

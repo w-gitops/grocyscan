@@ -7,7 +7,7 @@ Barcode scanning app for Grocy inventory management with multi-source product lo
 - **Multi-Source Barcode Lookup**: OpenFoodFacts, go-upc, UPCItemDB, Brave Search
 - **LLM-Powered Optimization**: Automatic name cleaning and category inference via LiteLLM
 - **Grocy Integration**: Seamless product sync and stock management
-- **Mobile-Friendly UI**: NiceGUI-based PWA with touch-friendly controls
+- **Mobile-Friendly UI**: Vue 3 + Quasar PWA with touch-friendly controls
 - **Offline Support**: Queue operations for sync when connectivity restored
 - **Full Observability**: Structured logging, OpenTelemetry tracing, Prometheus metrics
 
@@ -61,7 +61,14 @@ Barcode scanning app for Grocy inventory management with multi-source product lo
    python -m app.main
    ```
 
-8. Open http://localhost:3334 in your browser.
+8. Build and start the frontend:
+   ```bash
+   cd frontend
+   npm install
+   npm run build
+   ```
+
+9. Open http://localhost:3335 in your browser (API at :3334).
 
 ### Docker Deployment
 
@@ -140,7 +147,7 @@ grocyscan/
 │   │   ├── llm/       # LLM integration
 │   │   ├── grocy/     # Grocy API client
 │   │   └── queue/     # Background job queue
-│   └── ui/            # NiceGUI pages and components
+├── frontend/          # Vue 3 + Quasar frontend
 ├── migrations/        # Alembic migrations
 ├── tests/             # Test suite
 ├── docker/            # Docker configuration

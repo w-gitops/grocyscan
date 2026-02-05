@@ -12,7 +12,7 @@
         <q-btn flat label="Jobs" to="/jobs" class="gt-sm" data-testid="nav-jobs" />
         <q-btn flat label="Logs" to="/logs" class="gt-sm" data-testid="nav-logs" />
         <q-btn flat label="Settings" to="/settings" class="gt-sm" data-testid="nav-settings" />
-        <q-btn v-if="authStore.isAuthenticated" flat icon="logout" @click="logout" data-testid="logout-button" />
+        <q-btn v-if="authStore.isAuthenticated" flat icon="logout" @click="logout" data-testid="nav-logout" />
       </q-toolbar>
     </q-header>
 

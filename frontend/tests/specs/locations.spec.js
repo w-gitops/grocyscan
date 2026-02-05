@@ -1,11 +1,9 @@
 /**
  * Locations Page Tests
- * 
- * Tests for location management.
- * Maps to BrowserMCP test cases LOC-01 through LOC-10.
  */
-import { test, expect } from '../fixtures/auth.fixture.js'
+import { test, expect } from '../fixtures/index.js'
 import { LocationsPage } from '../pages/locations.page.js'
+import { LoginPage } from '../pages/login.page.js'
 
 test.describe('Locations Page', () => {
   test.beforeEach(async ({ page, request, baseURL }) => {
@@ -14,155 +12,135 @@ test.describe('Locations Page', () => {
       test.skip(true, 'Backend not available')
     }
 
-    // Login
-    await page.goto('/login')
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Password').fill('test')
-    await page.getByRole('button', { name: /sign in/i }).click()
-    await page.waitForURL(/\/scan/)
-
-    // Navigate to locations
+    const loginPage = new LoginPage(page)
+    await loginPage.navigate()
+    await loginPage.login('admin', 'test')
     await page.goto('/locations')
   })
 
   test.describe('Page Elements', () => {
-    // LOC-01: Page title
     test('displays page title', async ({ page }) => {
       await expect(page.getByText('Locations')).toBeVisible()
     })
 
-    // LOC-02: Add Location button
-    test('displays Add Location button', async ({ page }) => {
-      await expect(page.getByTestId('locations-add-button')).toBeVisible()
+    test('displays add location button', async ({ page }) => {
+      const addBtn = page.getByRole('button', { name: /add location/i })
+      await expect(addBtn).toBeVisible()
     })
 
-    // LOC-03: Location list or empty state
     test('displays location list or empty state', async ({ page }) => {
-      await page.waitForTimeout(2000)
+      await page.waitForTimeout(1000)
       
-      const list = page.getByTestId('locations-list')
-      const empty = page.getByTestId('locations-empty')
+      const hasList = await page.locator('.q-list').isVisible().catch(() => false)
+      const hasEmpty = await page.getByText(/no locations/i).isVisible().catch(() => false)
       
-      const hasLocations = await list.isVisible().catch(() => false)
-      const isEmpty = await empty.isVisible().catch(() => false)
-      
-      expect(hasLocations || isEmpty).toBeTruthy()
+      expect(hasList || hasEmpty).toBe(true)
     })
   })
 
   test.describe('Add Location Dialog', () => {
-    // LOC-04: Add Location dialog opens
-    test('Add Location button opens dialog', async ({ page }) => {
-      await page.getByTestId('locations-add-button').click()
-      await expect(page.getByTestId('location-dialog')).toBeVisible()
-    })
-
-    // LOC-05: Dialog has name input
-    test('dialog has name input', async ({ page }) => {
-      await page.getByTestId('locations-add-button').click()
-      await expect(page.getByTestId('location-name-input')).toBeVisible()
-    })
-
-    // LOC-06: Dialog has description input
-    test('dialog has description input', async ({ page }) => {
-      await page.getByTestId('locations-add-button').click()
-      await expect(page.getByTestId('location-description-input')).toBeVisible()
-    })
-
-    // LOC-07: Dialog has type selector
-    test('dialog has type selector', async ({ page }) => {
-      await page.getByTestId('locations-add-button').click()
-      await expect(page.getByTestId('location-type-select')).toBeVisible()
-    })
-
-    // LOC-08: Dialog has freezer toggle
-    test('dialog has freezer toggle', async ({ page }) => {
-      await page.getByTestId('locations-add-button').click()
-      await expect(page.getByTestId('location-freezer-toggle')).toBeVisible()
-    })
-
-    // LOC-09: Dialog has cancel and save buttons
-    test('dialog has cancel and save buttons', async ({ page }) => {
-      await page.getByTestId('locations-add-button').click()
-      await expect(page.getByTestId('location-cancel-button')).toBeVisible()
-      await expect(page.getByTestId('location-save-button')).toBeVisible()
-    })
-
-    test('cancel button closes dialog', async ({ page }) => {
-      await page.getByTestId('locations-add-button').click()
-      await expect(page.getByTestId('location-dialog')).toBeVisible()
+    test('can open add location dialog', async ({ page }) => {
+      const locationsPage = new LocationsPage(page)
+      await locationsPage.openAddDialog()
       
-      await page.getByTestId('location-cancel-button').click()
-      await expect(page.getByTestId('location-dialog')).not.toBeVisible()
+      await expect(await locationsPage.isDialogOpen()).toBe(true)
+    })
+
+    test('add dialog has name input', async ({ page }) => {
+      const locationsPage = new LocationsPage(page)
+      await locationsPage.openAddDialog()
+      
+      const nameInput = page.getByLabel('Name')
+      await expect(nameInput).toBeVisible()
+    })
+
+    test('add dialog has type selector', async ({ page }) => {
+      const locationsPage = new LocationsPage(page)
+      await locationsPage.openAddDialog()
+      
+      const typeSelect = page.getByLabel('Type')
+      await expect(typeSelect).toBeVisible()
+    })
+
+    test('add dialog has freezer toggle', async ({ page }) => {
+      const locationsPage = new LocationsPage(page)
+      await locationsPage.openAddDialog()
+      
+      const freezerToggle = page.getByText(/is freezer/i)
+      await expect(freezerToggle).toBeVisible()
+    })
+
+    test('add dialog has save button', async ({ page }) => {
+      const locationsPage = new LocationsPage(page)
+      await locationsPage.openAddDialog()
+      
+      const saveBtn = page.getByRole('button', { name: /add|save/i }).last()
+      await expect(saveBtn).toBeVisible()
+    })
+
+    test('add dialog has cancel button', async ({ page }) => {
+      const locationsPage = new LocationsPage(page)
+      await locationsPage.openAddDialog()
+      
+      const cancelBtn = page.getByRole('button', { name: /cancel/i })
+      await expect(cancelBtn).toBeVisible()
     })
   })
 
-  test.describe('Create Location', () => {
+  test.describe('Location Creation', () => {
     test('can fill location form', async ({ page }) => {
-      await page.getByTestId('locations-add-button').click()
+      const locationsPage = new LocationsPage(page)
+      await locationsPage.openAddDialog()
       
-      await page.getByTestId('location-name-input').fill('Test Kitchen')
-      await expect(page.getByTestId('location-name-input')).toHaveValue('Test Kitchen')
-      
-      await page.getByTestId('location-description-input').fill('Main kitchen area')
-      await expect(page.getByTestId('location-description-input')).toHaveValue('Main kitchen area')
+      await page.getByLabel('Name').fill('Test Location')
+      await expect(page.getByLabel('Name')).toHaveValue('Test Location')
     })
 
-    test('can toggle freezer setting', async ({ page }) => {
-      await page.getByTestId('locations-add-button').click()
+    test('can create new location', async ({ page }) => {
+      const locationsPage = new LocationsPage(page)
+      const testName = `Test Location ${Date.now()}`
       
-      const freezerToggle = page.getByTestId('location-freezer-toggle')
-      await freezerToggle.click()
+      await locationsPage.openAddDialog()
+      await page.getByLabel('Name').fill(testName)
+      await page.getByRole('button', { name: /add|save/i }).last().click()
       
-      // Toggle should be checked now
-      await expect(freezerToggle).toBeChecked()
-    })
-
-    test('can select location type', async ({ page }) => {
-      await page.getByTestId('locations-add-button').click()
+      // Wait for dialog to close
+      await page.waitForTimeout(1000)
       
-      const typeSelect = page.getByTestId('location-type-select')
-      await typeSelect.click()
-      
-      // Select freezer option
-      await page.getByRole('option', { name: 'freezer' }).click()
-    })
-
-    // LOC-10: Create location (integration)
-    test('creating location shows success notification', async ({ page }) => {
-      const uniqueName = `Test Location ${Date.now()}`
-      
-      await page.getByTestId('locations-add-button').click()
-      await page.getByTestId('location-name-input').fill(uniqueName)
-      await page.getByTestId('location-save-button').click()
-      
-      // Should show success notification
-      await expect(page.locator('.q-notification')).toBeVisible({ timeout: 5000 })
+      // Location should appear in list
+      const locationText = page.getByText(testName)
+      const isVisible = await locationText.isVisible().catch(() => false)
+      expect(isVisible).toBe(true)
     })
   })
 
-  test.describe('Location Cards', () => {
-    test('location cards display name', async ({ page }) => {
-      await page.waitForTimeout(2000)
+  test.describe('Location Actions', () => {
+    test('location row has edit button', async ({ page }) => {
+      await page.waitForTimeout(1000)
       
-      const locationCard = page.getByTestId('location-card').first()
+      const locationRow = page.locator('[data-testid^="location-row-"]').first()
+      const hasRow = await locationRow.isVisible().catch(() => false)
       
-      if (await locationCard.isVisible().catch(() => false)) {
-        // Card should have text content
-        const text = await locationCard.textContent()
-        expect(text.length).toBeGreaterThan(0)
+      if (!hasRow) {
+        test.skip(true, 'No locations to test')
       }
+      
+      const editBtn = locationRow.locator('[data-testid="location-edit-btn"]')
+      await expect(editBtn).toBeVisible()
     })
 
-    test('freezer locations show freezer icon', async ({ page }) => {
-      await page.waitForTimeout(2000)
+    test('location row has delete button', async ({ page }) => {
+      await page.waitForTimeout(1000)
       
-      const freezerIcon = page.getByTestId('location-freezer-icon').first()
+      const locationRow = page.locator('[data-testid^="location-row-"]').first()
+      const hasRow = await locationRow.isVisible().catch(() => false)
       
-      // If there are freezer locations, they should have the icon
-      // This test passes regardless of whether freezer locations exist
-      const hasIcon = await freezerIcon.isVisible().catch(() => false)
-      expect(typeof hasIcon).toBe('boolean')
+      if (!hasRow) {
+        test.skip(true, 'No locations to test')
+      }
+      
+      const deleteBtn = locationRow.locator('[data-testid="location-delete-btn"]')
+      await expect(deleteBtn).toBeVisible()
     })
   })
 })

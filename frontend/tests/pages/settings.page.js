@@ -1,7 +1,5 @@
 /**
  * Settings Page Object
- * 
- * Encapsulates all interactions with the settings page (all 5 tabs).
  */
 import { BasePage } from './base.page.js'
 
@@ -9,63 +7,53 @@ export class SettingsPage extends BasePage {
   constructor(page) {
     super(page)
     
-    // Tab navigation
-    this.grocyTab = page.getByTestId('settings-tab-grocy')
-    this.llmTab = page.getByTestId('settings-tab-llm')
-    this.lookupTab = page.getByTestId('settings-tab-lookup')
-    this.scanningTab = page.getByTestId('settings-tab-scanning')
-    this.uiTab = page.getByTestId('settings-tab-ui')
+    // Page container
+    this.pageContainer = this.getByTestId('settings-page')
     
-    // Fallback tab selectors
-    this.grocyTabFallback = page.getByRole('tab', { name: /grocy/i })
-    this.llmTabFallback = page.getByRole('tab', { name: /llm/i })
-    this.lookupTabFallback = page.getByRole('tab', { name: /lookup/i })
-    this.scanningTabFallback = page.getByRole('tab', { name: /scanning/i })
-    this.uiTabFallback = page.getByRole('tab', { name: /ui/i })
+    // Tabs
+    this.tabsContainer = this.getByTestId('settings-tabs')
+    this.grocyTab = this.getByTestId('settings-tab-grocy')
+    this.llmTab = this.getByTestId('settings-tab-llm')
+    this.lookupTab = this.getByTestId('settings-tab-lookup')
+    this.scanningTab = this.getByTestId('settings-tab-scanning')
+    this.uiTab = this.getByTestId('settings-tab-ui')
     
-    // === GROCY TAB ===
-    this.grocyApiUrl = page.getByTestId('grocy-api-url')
-    this.grocyApiKey = page.getByTestId('grocy-api-key')
-    this.grocyWebUrl = page.getByTestId('grocy-web-url')
-    this.grocyTestButton = page.getByTestId('grocy-test-connection')
-    this.grocyTestStatus = page.getByTestId('grocy-test-status')
-    this.grocySaveButton = page.getByTestId('grocy-save-button')
+    // Grocy panel
+    this.grocyApiUrl = this.getByTestId('grocy-api-url')
+    this.grocyApiKey = this.getByTestId('grocy-api-key')
+    this.grocyWebUrl = this.getByTestId('grocy-web-url')
+    this.grocyTestBtn = this.getByTestId('grocy-test-btn')
+    this.grocySaveBtn = this.getByTestId('grocy-save-btn')
+    this.grocyStatus = this.getByTestId('grocy-status')
     
-    // === LLM TAB ===
-    this.llmProviderPreset = page.getByTestId('llm-provider-preset')
-    this.llmApiUrl = page.getByTestId('llm-api-url')
-    this.llmApiKey = page.getByTestId('llm-api-key')
-    this.llmModel = page.getByTestId('llm-model')
-    this.llmTestButton = page.getByTestId('llm-test-connection')
-    this.llmSaveButton = page.getByTestId('llm-save-button')
+    // LLM panel
+    this.llmProviderPreset = this.getByTestId('llm-provider-preset')
+    this.llmApiUrl = this.getByTestId('llm-api-url')
+    this.llmApiKey = this.getByTestId('llm-api-key')
+    this.llmModel = this.getByTestId('llm-model')
+    this.llmSaveBtn = this.getByTestId('llm-save-btn')
     
-    // === LOOKUP TAB ===
-    this.lookupStrategy = page.getByTestId('lookup-strategy')
-    this.openFoodFactsToggle = page.getByTestId('lookup-openfoodfacts-toggle')
-    this.goUpcToggle = page.getByTestId('lookup-goupc-toggle')
-    this.goUpcApiKey = page.getByTestId('lookup-goupc-apikey')
-    this.upcItemDbToggle = page.getByTestId('lookup-upcitemdb-toggle')
-    this.braveSearchToggle = page.getByTestId('lookup-bravesearch-toggle')
-    this.braveSearchFallbackToggle = page.getByTestId('lookup-bravesearch-fallback')
-    this.lookupTestButtons = page.getByTestId('lookup-test-provider')
-    this.lookupSaveButton = page.getByTestId('lookup-save-button')
+    // Lookup panel
+    this.lookupStrategy = this.getByTestId('lookup-strategy')
+    this.offEnabled = this.getByTestId('lookup-off-enabled')
+    this.goupcEnabled = this.getByTestId('lookup-goupc-enabled')
+    this.upcitemdbEnabled = this.getByTestId('lookup-upcitemdb-enabled')
+    this.braveEnabled = this.getByTestId('lookup-brave-enabled')
+    this.lookupSaveBtn = this.getByTestId('lookup-save-btn')
     
-    // === SCANNING TAB ===
-    this.autoAddToggle = page.getByTestId('scanning-auto-add')
-    this.kioskModeToggle = page.getByTestId('scanning-kiosk-mode')
-    this.fuzzyThreshold = page.getByTestId('scanning-fuzzy-threshold')
-    this.defaultQuantityUnit = page.getByTestId('scanning-default-quantity-unit')
-    this.scanningSaveButton = page.getByTestId('scanning-save-button')
+    // Scanning panel
+    this.scanningAutoAdd = this.getByTestId('scanning-auto-add')
+    this.scanningFuzzyThreshold = this.getByTestId('scanning-fuzzy-threshold')
+    this.scanningDefaultUnit = this.getByTestId('scanning-default-unit')
+    this.scanningKioskMode = this.getByTestId('scanning-kiosk-mode')
+    this.scanningSaveBtn = this.getByTestId('scanning-save-btn')
     
-    // === UI TAB ===
-    this.lightThemeButton = page.getByTestId('ui-theme-light')
-    this.darkThemeButton = page.getByTestId('ui-theme-dark')
-    this.autoThemeButton = page.getByTestId('ui-theme-auto')
-    this.saveThemeButton = page.getByTestId('ui-save-theme')
+    // UI panel
+    this.uiKioskMode = this.getByTestId('ui-kiosk-mode')
+    this.uiSaveBtn = this.getByTestId('ui-save-btn')
     
-    // Page elements
-    this.pageTitle = page.getByRole('heading', { name: 'Settings' })
-    this.saveNotification = page.getByText(/saved|success/i)
+    // Fallbacks
+    this.pageTitleFallback = page.getByText('Settings')
   }
 
   async goto() {
@@ -76,212 +64,93 @@ export class SettingsPage extends BasePage {
     return this.page.url().includes('/settings')
   }
 
-  async waitForLoad() {
-    await this.pageTitle.waitFor({ state: 'visible' })
-  }
-
-  // === TAB NAVIGATION ===
-
+  /**
+   * Switch to tab
+   */
   async switchToTab(tabName) {
-    const tabs = {
-      grocy: [this.grocyTab, this.grocyTabFallback],
-      llm: [this.llmTab, this.llmTabFallback],
-      lookup: [this.lookupTab, this.lookupTabFallback],
-      scanning: [this.scanningTab, this.scanningTabFallback],
-      ui: [this.uiTab, this.uiTabFallback]
+    const tabMap = {
+      grocy: this.grocyTab,
+      llm: this.llmTab,
+      lookup: this.lookupTab,
+      scanning: this.scanningTab,
+      ui: this.uiTab
     }
-    
-    const [primary, fallback] = tabs[tabName]
-    const tab = await primary.isVisible().catch(() => false) ? primary : fallback
-    await tab.click()
+    const tab = tabMap[tabName]
+    if (tab) {
+      await tab.click()
+    } else {
+      // Fallback to clicking by label
+      await this.page.getByRole('tab', { name: new RegExp(tabName, 'i') }).click()
+    }
   }
 
-  async getCurrentTab() {
-    // Find the active tab
-    const activeTab = this.page.locator('[role="tab"][aria-selected="true"], .q-tab--active')
-    const text = await activeTab.textContent()
-    return text.toLowerCase()
-  }
-
-  // === GROCY TAB METHODS ===
-
-  async fillGrocySettings({ apiUrl, apiKey, webUrl }) {
+  /**
+   * Configure Grocy connection
+   */
+  async configureGrocy({ apiUrl, apiKey, webUrl }) {
     await this.switchToTab('grocy')
-    
     if (apiUrl) {
-      const field = await this.grocyApiUrl.isVisible().catch(() => false)
-        ? this.grocyApiUrl
-        : this.page.getByLabel(/api url/i)
-      await field.fill(apiUrl)
+      const input = this.grocyApiUrl.or(this.page.getByLabel('API URL'))
+      await input.fill(apiUrl)
     }
     if (apiKey) {
-      const field = await this.grocyApiKey.isVisible().catch(() => false)
-        ? this.grocyApiKey
-        : this.page.getByLabel(/api key/i)
-      await field.fill(apiKey)
+      const input = this.grocyApiKey.or(this.page.getByLabel('API Key'))
+      await input.fill(apiKey)
     }
     if (webUrl) {
-      const field = await this.grocyWebUrl.isVisible().catch(() => false)
-        ? this.grocyWebUrl
-        : this.page.getByLabel(/web url/i)
-      await field.fill(webUrl)
+      const input = this.grocyWebUrl.or(this.page.getByLabel('Web URL'))
+      await input.fill(webUrl)
     }
   }
 
+  /**
+   * Test Grocy connection
+   */
   async testGrocyConnection() {
-    const btn = await this.grocyTestButton.isVisible().catch(() => false)
-      ? this.grocyTestButton
-      : this.page.getByRole('button', { name: /test connection/i })
-    await btn.click()
+    await this.grocyTestBtn.or(this.page.getByRole('button', { name: /test connection/i })).click()
   }
 
+  /**
+   * Save Grocy settings
+   */
   async saveGrocySettings() {
-    const btn = await this.grocySaveButton.isVisible().catch(() => false)
-      ? this.grocySaveButton
-      : this.page.getByRole('button', { name: /save/i })
-    await btn.click()
+    await this.grocySaveBtn.or(this.page.getByRole('button', { name: 'Save' }).first()).click()
   }
 
-  // === LLM TAB METHODS ===
-
-  async selectLlmPreset(preset) {
+  /**
+   * Configure LLM
+   */
+  async configureLLM({ provider, apiUrl, apiKey, model }) {
     await this.switchToTab('llm')
-    const selector = await this.llmProviderPreset.isVisible().catch(() => false)
-      ? this.llmProviderPreset
-      : this.page.getByLabel(/provider|preset/i)
-    await selector.click()
-    await this.page.getByRole('option', { name: new RegExp(preset, 'i') }).click()
-  }
-
-  async fillLlmSettings({ apiUrl, apiKey, model }) {
-    await this.switchToTab('llm')
-    
-    if (apiUrl) {
-      const field = await this.llmApiUrl.isVisible().catch(() => false)
-        ? this.llmApiUrl
-        : this.page.getByLabel(/api url/i)
-      await field.fill(apiUrl)
+    if (provider) {
+      await this.llmProviderPreset.or(this.page.getByLabel('Provider Preset')).click()
+      await this.page.getByRole('option', { name: provider }).click()
     }
-    if (apiKey) {
-      const field = await this.llmApiKey.isVisible().catch(() => false)
-        ? this.llmApiKey
-        : this.page.getByLabel(/api key/i)
-      await field.fill(apiKey)
-    }
-    if (model) {
-      const field = await this.llmModel.isVisible().catch(() => false)
-        ? this.llmModel
-        : this.page.getByLabel(/model/i)
-      await field.fill(model)
-    }
+    if (apiUrl) await this.llmApiUrl.or(this.page.locator('input[label="API URL"]')).fill(apiUrl)
+    if (apiKey) await this.llmApiKey.or(this.page.locator('input[type="password"]')).fill(apiKey)
+    if (model) await this.llmModel.or(this.page.getByLabel('Model')).fill(model)
   }
 
-  async testLlmConnection() {
-    const btn = await this.llmTestButton.isVisible().catch(() => false)
-      ? this.llmTestButton
-      : this.page.getByRole('button', { name: /test/i })
-    await btn.click()
+  /**
+   * Save LLM settings
+   */
+  async saveLLMSettings() {
+    await this.llmSaveBtn.or(this.page.getByRole('button', { name: 'Save' })).click()
   }
 
-  // === LOOKUP TAB METHODS ===
-
-  async setLookupStrategy(strategy) {
-    await this.switchToTab('lookup')
-    const selector = await this.lookupStrategy.isVisible().catch(() => false)
-      ? this.lookupStrategy
-      : this.page.getByLabel(/strategy/i)
-    await selector.click()
-    await this.page.getByRole('option', { name: new RegExp(strategy, 'i') }).click()
+  /**
+   * Get current tab name
+   */
+  async getCurrentTab() {
+    const activeTab = this.page.locator('.q-tab--active')
+    return activeTab.textContent()
   }
 
-  async toggleLookupProvider(provider, enabled) {
-    await this.switchToTab('lookup')
-    const toggles = {
-      openfoodfacts: this.openFoodFactsToggle,
-      goupc: this.goUpcToggle,
-      upcitemdb: this.upcItemDbToggle,
-      bravesearch: this.braveSearchToggle
-    }
-    
-    const toggle = toggles[provider.toLowerCase()] || this.page.getByLabel(new RegExp(provider, 'i'))
-    const isChecked = await toggle.isChecked()
-    if (isChecked !== enabled) {
-      await toggle.click()
-    }
-  }
-
-  async testLookupProvider(provider) {
-    await this.switchToTab('lookup')
-    const testBtn = this.page.getByTestId(`lookup-test-${provider.toLowerCase()}`)
-    const btn = await testBtn.isVisible().catch(() => false)
-      ? testBtn
-      : this.page.locator(`button`).filter({ hasText: new RegExp(`test.*${provider}`, 'i') })
-    await btn.click()
-  }
-
-  // === SCANNING TAB METHODS ===
-
-  async toggleAutoAdd(enabled) {
-    await this.switchToTab('scanning')
-    const toggle = await this.autoAddToggle.isVisible().catch(() => false)
-      ? this.autoAddToggle
-      : this.page.getByLabel(/auto.?add/i)
-    const isChecked = await toggle.isChecked()
-    if (isChecked !== enabled) {
-      await toggle.click()
-    }
-  }
-
-  async toggleKioskMode(enabled) {
-    await this.switchToTab('scanning')
-    const toggle = await this.kioskModeToggle.isVisible().catch(() => false)
-      ? this.kioskModeToggle
-      : this.page.getByLabel(/kiosk/i)
-    const isChecked = await toggle.isChecked()
-    if (isChecked !== enabled) {
-      await toggle.click()
-    }
-  }
-
-  async setFuzzyThreshold(value) {
-    await this.switchToTab('scanning')
-    const field = await this.fuzzyThreshold.isVisible().catch(() => false)
-      ? this.fuzzyThreshold
-      : this.page.getByLabel(/threshold/i)
-    await field.fill(String(value))
-  }
-
-  // === UI TAB METHODS ===
-
-  async setTheme(theme) {
-    await this.switchToTab('ui')
-    const buttons = {
-      light: this.lightThemeButton,
-      dark: this.darkThemeButton,
-      auto: this.autoThemeButton
-    }
-    
-    const btn = await buttons[theme].isVisible().catch(() => false)
-      ? buttons[theme]
-      : this.page.getByRole('button', { name: new RegExp(theme, 'i') })
-    await btn.click()
-  }
-
-  async saveTheme() {
-    const btn = await this.saveThemeButton.isVisible().catch(() => false)
-      ? this.saveThemeButton
-      : this.page.getByRole('button', { name: /save theme/i })
-    await btn.click()
-  }
-
-  // === GENERAL METHODS ===
-
-  async saveCurrentTab() {
-    const saveBtn = this.page.getByRole('button', { name: /save/i }).first()
-    await saveBtn.click()
-  }
-
-  async waitForSaveConfirmation() {
-    await this.saveNotification.waitFor({ state: 'visible' })
+  /**
+   * Check if Grocy connection is successful
+   */
+  async isGrocyConnected() {
+    const status = this.grocyStatus.or(this.page.locator('.text-green:has-text("Connected")'))
+    return status.isVisible()
   }
 }

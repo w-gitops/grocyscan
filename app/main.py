@@ -159,7 +159,7 @@ def create_app() -> FastAPI:
             headers={"Service-Worker-Allowed": "/"},
         )
 
-    # Vue frontend at / when frontend/dist exists (NiceGUI disabled)
+    # Vue frontend at / when frontend/dist exists
     _frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
     if _frontend_dist.exists():
         app.mount(

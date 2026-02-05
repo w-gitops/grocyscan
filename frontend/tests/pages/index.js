@@ -1,10 +1,6 @@
 /**
- * Central export for all page objects
- * 
- * Usage:
- *   import { LoginPage, ScanPage, ProductsPage } from './pages'
+ * Central export for all Page Objects
  */
-
 export { BasePage } from './base.page.js'
 export { LoginPage } from './login.page.js'
 export { ScanPage } from './scan.page.js'

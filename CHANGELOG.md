@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **NiceGUI Frontend** - Removed `app/ui/` directory (~3,500 lines)
+  - NiceGUI dependency removed from requirements.txt and pyproject.toml
+  - Vue 3 + Quasar frontend is now the sole UI (port 3335)
+  - See DEC-052 in decision log for rationale
+
+### Changed
+
+- **Frontend architecture** - Vue/Quasar is now the only frontend
+  - API serves on port 3334, frontend on port 3335
+  - Updated all PRD documentation to remove NiceGUI references
+
 ## [0.3.4-alpha] - 2026-02-02
 
 ### Added

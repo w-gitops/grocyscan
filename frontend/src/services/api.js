@@ -226,6 +226,98 @@ export async function createMeLocation(deviceId, data) {
   return res.json()
 }
 
+export async function updateMeLocation(deviceId, locationId, data) {
+  const res = await apiFetch(`/api/me/locations/${locationId}`, {
+    method: 'PATCH',
+    headers: { 'X-Device-ID': deviceId },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw apiErrorFromResponse(res, await res.text())
+  return res.json()
+}
+
+export async function deleteMeLocation(deviceId, locationId) {
+  const res = await apiFetch(`/api/me/locations/${locationId}`, {
+    method: 'DELETE',
+    headers: { 'X-Device-ID': deviceId },
+  })
+  if (!res.ok) throw apiErrorFromResponse(res, await res.text())
+}
+
+// Stock operations (Phase 3.5)
+export async function transferStock(deviceId, productId, fromLocationId, toLocationId, quantity) {
+  const res = await apiFetch('/api/me/stock/transfer', {
+    method: 'POST',
+    headers: { 'X-Device-ID': deviceId },
+    body: JSON.stringify({
+      product_id: productId,
+      from_location_id: fromLocationId,
+      to_location_id: toLocationId,
+      quantity,
+    }),
+  })
+  if (!res.ok) throw apiErrorFromResponse(res, await res.text())
+  return res.json()
+}
+
+export async function inventoryStock(deviceId, productId, newAmount, locationId = null, bestBeforeDate = null) {
+  const body = {
+    product_id: productId,
+    new_amount: newAmount,
+  }
+  if (locationId) body.location_id = locationId
+  if (bestBeforeDate) body.best_before_date = bestBeforeDate
+  const res = await apiFetch('/api/me/stock/inventory', {
+    method: 'POST',
+    headers: { 'X-Device-ID': deviceId },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw apiErrorFromResponse(res, await res.text())
+  return res.json()
+}
+
+export async function openStock(deviceId, stockEntryId, amount = null) {
+  const body = { stock_entry_id: stockEntryId }
+  if (amount !== null) body.amount = amount
+  const res = await apiFetch('/api/me/stock/open', {
+    method: 'POST',
+    headers: { 'X-Device-ID': deviceId },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw apiErrorFromResponse(res, await res.text())
+  return res.json()
+}
+
+export async function editStockEntry(deviceId, entryId, data) {
+  const res = await apiFetch(`/api/me/stock/entries/${entryId}`, {
+    method: 'PATCH',
+    headers: { 'X-Device-ID': deviceId },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw apiErrorFromResponse(res, await res.text())
+  return res.json()
+}
+
+export async function undoTransaction(deviceId, transactionId) {
+  const res = await apiFetch(`/api/me/stock/undo/${transactionId}`, {
+    method: 'POST',
+    headers: { 'X-Device-ID': deviceId },
+  })
+  if (!res.ok) throw apiErrorFromResponse(res, await res.text())
+  return res.json()
+}
+
+export async function getStockTransactions(deviceId, productId = null, limit = 100) {
+  const params = new URLSearchParams()
+  if (productId) params.set('product_id', productId)
+  if (limit) params.set('limit', limit)
+  const qs = params.toString()
+  const url = qs ? `/api/me/stock/transactions?${qs}` : '/api/me/stock/transactions'
+  const res = await apiFetch(url, { headers: { 'X-Device-ID': deviceId } })
+  if (!res.ok) throw apiErrorFromResponse(res, await res.text())
+  return res.json()
+}
+
 // Logs (session only)
 export async function getLogs() {
   const res = await apiFetch('/api/logs')

@@ -1,7 +1,5 @@
 /**
  * Jobs Page Object
- * 
- * Encapsulates all interactions with the job queue page.
  */
 import { BasePage } from './base.page.js'
 
@@ -9,30 +7,30 @@ export class JobsPage extends BasePage {
   constructor(page) {
     super(page)
     
-    // Stats cards
-    this.pendingStat = page.getByTestId('jobs-stat-pending')
-    this.runningStat = page.getByTestId('jobs-stat-running')
-    this.completedStat = page.getByTestId('jobs-stat-completed')
-    this.failedStat = page.getByTestId('jobs-stat-failed')
+    // Page elements
+    this.pageContainer = this.getByTestId('jobs-page')
+    this.title = this.getByTestId('jobs-title')
+    this.statsCard = this.getByTestId('jobs-stats')
+    this.jobsList = this.getByTestId('jobs-list')
+    this.loadingState = this.getByTestId('jobs-loading')
+    this.emptyState = this.getByTestId('jobs-empty')
+    
+    // Stats
+    this.pendingCount = this.getByTestId('jobs-pending-count')
+    this.runningCount = this.getByTestId('jobs-running-count')
+    this.completedCount = this.getByTestId('jobs-completed-count')
+    this.failedCount = this.getByTestId('jobs-failed-count')
     
     // Filters
-    this.statusFilter = page.getByTestId('jobs-status-filter')
-    this.typeFilter = page.getByTestId('jobs-type-filter')
-    this.refreshButton = page.getByTestId('jobs-refresh-button')
+    this.statusFilter = this.getByTestId('jobs-status-filter')
+    this.typeFilter = this.getByTestId('jobs-type-filter')
+    this.refreshBtn = this.getByTestId('jobs-refresh-btn')
     
-    // Job list
-    this.jobList = page.getByTestId('jobs-list')
-    this.jobCards = page.getByTestId('job-card')
-    this.emptyState = page.getByText(/no jobs/i)
+    // Job item
+    this.jobItem = this.getByTestId('job-item')
     
-    // Job detail
-    this.jobDetail = page.getByTestId('job-detail')
-    this.retryButton = page.getByTestId('job-retry-button')
-    this.cancelButton = page.getByTestId('job-cancel-button')
-    
-    // Page elements
-    this.pageTitle = page.getByRole('heading', { name: /job queue|jobs/i })
-    this.loadingIndicator = page.locator('.q-spinner')
+    // Fallbacks
+    this.pageTitleFallback = page.getByRole('heading', { name: 'Jobs' })
   }
 
   async goto() {
@@ -43,126 +41,47 @@ export class JobsPage extends BasePage {
     return this.page.url().includes('/jobs')
   }
 
-  async waitForLoad() {
-    await this.pageTitle.waitFor({ state: 'visible' })
-  }
-
   /**
-   * Get job stats
+   * Get job count
    */
-  async getStats() {
-    const getText = async (locator, fallbackText) => {
-      try {
-        if (await locator.isVisible()) {
-          return await locator.textContent()
-        }
-      } catch {}
-      // Fallback: find by label
-      const card = this.page.locator('.q-card').filter({ hasText: fallbackText })
-      const value = card.locator('.text-h4, .text-h5, .stat-value')
-      return await value.textContent()
-    }
-
-    return {
-      pending: await getText(this.pendingStat, 'Pending'),
-      running: await getText(this.runningStat, 'Running'),
-      completed: await getText(this.completedStat, 'Completed'),
-      failed: await getText(this.failedStat, 'Failed')
-    }
+  async getJobCount() {
+    return this.jobItem.count()
   }
 
   /**
    * Filter by status
-   * @param {'all' | 'pending' | 'running' | 'completed' | 'failed'} status 
    */
   async filterByStatus(status) {
-    const filter = await this.statusFilter.isVisible().catch(() => false)
-      ? this.statusFilter
-      : this.page.getByLabel(/status/i)
-    await filter.click()
-    await this.page.getByRole('option', { name: new RegExp(status, 'i') }).click()
-  }
-
-  /**
-   * Get count of visible jobs
-   */
-  async getJobCount() {
-    const cards = this.page.locator('[data-testid="job-card"], .job-card, .q-item')
-    return await cards.count()
-  }
-
-  /**
-   * Click on a job to view details
-   * @param {number} index - 0-based index
-   */
-  async clickJob(index) {
-    const cards = this.page.locator('[data-testid="job-card"], .job-card, .q-item')
-    await cards.nth(index).click()
+    await this.statusFilter.click()
+    await this.page.getByRole('option', { name: status }).click()
   }
 
   /**
    * Refresh job list
    */
   async refresh() {
-    const btn = await this.refreshButton.isVisible().catch(() => false)
-      ? this.refreshButton
-      : this.page.getByRole('button', { name: /refresh/i })
-    await btn.click()
+    await this.refreshBtn.click()
   }
 
   /**
-   * Retry a failed job
+   * Get pending count value
    */
-  async retryJob() {
-    const btn = await this.retryButton.isVisible().catch(() => false)
-      ? this.retryButton
-      : this.page.getByRole('button', { name: /retry/i })
-    await btn.click()
+  async getPendingCount() {
+    const text = await this.pendingCount.textContent()
+    return parseInt(text, 10)
   }
 
   /**
-   * Cancel a running job
+   * Check if loading
    */
-  async cancelJob() {
-    const btn = await this.cancelButton.isVisible().catch(() => false)
-      ? this.cancelButton
-      : this.page.getByRole('button', { name: /cancel/i })
-    await btn.click()
+  async isLoading() {
+    return this.loadingState.isVisible().catch(() => false)
   }
 
   /**
-   * Check if job detail is open
-   */
-  async isDetailOpen() {
-    return await this.jobDetail.isVisible().catch(() => false) ||
-           await this.page.getByRole('dialog').isVisible()
-  }
-
-  /**
-   * Close job detail
-   */
-  async closeDetail() {
-    await this.page.getByRole('button', { name: /close|×/i }).click()
-  }
-
-  /**
-   * Get job status badge color class
-   * @param {number} index 
-   */
-  async getJobStatusColor(index) {
-    const cards = this.page.locator('[data-testid="job-card"], .job-card, .q-item')
-    const badge = cards.nth(index).locator('.q-badge, .status-badge')
-    const classes = await badge.getAttribute('class')
-    if (classes.includes('green') || classes.includes('positive')) return 'success'
-    if (classes.includes('red') || classes.includes('negative')) return 'failed'
-    if (classes.includes('orange') || classes.includes('warning')) return 'running'
-    return 'pending'
-  }
-
-  /**
-   * Check if empty state is shown
+   * Check if empty
    */
   async isEmpty() {
-    return await this.emptyState.isVisible()
+    return this.emptyState.isVisible().catch(() => false)
   }
 }

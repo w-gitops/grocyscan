@@ -7,8 +7,8 @@
       dense
       placeholder="Search products..."
       class="q-mb-md"
-      data-testid="products-search"
       @update:model-value="loadProducts"
+      data-testid="products-search"
     >
       <template v-slot:prepend>
         <q-icon name="search" />
@@ -33,7 +33,7 @@
 
     <!-- Detail dialog -->
     <q-dialog v-model="detailDialog" data-testid="product-detail-dialog">
-      <q-card v-if="selectedProduct" style="min-width: 350px; max-width: 500px" data-testid="product-detail-card">
+      <q-card v-if="selectedProduct" style="min-width: 350px; max-width: 500px">
         <q-card-section>
           <div class="text-h6" data-testid="product-detail-name">{{ selectedProduct.name }}</div>
           <div class="text-caption text-grey q-mb-sm">{{ selectedProduct.description || '' }}</div>
@@ -47,16 +47,58 @@
           </div>
         </q-card-section>
 
-        <!-- Stock by location -->
-        <q-card-section v-if="detailStock.length">
-          <div class="text-subtitle2 q-mb-xs">Stock by Location</div>
+        <!-- Stock entries list -->
+        <q-card-section v-if="detailStock.length" data-testid="stock-entry-list">
+          <div class="text-subtitle2 q-mb-xs">Stock Entries</div>
           <q-list dense bordered separator>
-            <q-item v-for="(s, idx) in detailStock" :key="idx" dense>
+            <q-item
+              v-for="(s, idx) in detailStock"
+              :key="idx"
+              dense
+              :data-testid="`stock-entry-row-${idx}`"
+            >
+              <q-item-section avatar>
+                <q-icon v-if="s.open" name="open_in_new" color="orange" size="sm">
+                  <q-tooltip>Opened</q-tooltip>
+                </q-icon>
+                <q-icon v-else name="inventory" color="grey" size="sm" />
+              </q-item-section>
               <q-item-section>
-                <q-item-label>{{ s.location_name }}</q-item-label>
+                <q-item-label>{{ s.location_name || 'Unspecified' }}</q-item-label>
+                <q-item-label caption>
+                  <span v-if="s.expiration_date" :class="isExpiringSoon(s.expiration_date) ? 'text-warning' : (isExpired(s.expiration_date) ? 'text-negative' : '')">
+                    Exp: {{ s.expiration_date }}
+                  </span>
+                  <span v-if="s.price"> · ${{ s.price }}</span>
+                  <span v-if="s.note"> · {{ s.note }}</span>
+                </q-item-label>
               </q-item-section>
               <q-item-section side>
-                <q-badge color="primary">{{ s.quantity }}</q-badge>
+                <div class="row items-center q-gutter-xs">
+                  <q-badge color="primary">{{ s.quantity }}</q-badge>
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    size="sm"
+                    icon="swap_horiz"
+                    @click="openMoveDialog(s)"
+                    data-testid="stock-move-btn"
+                  >
+                    <q-tooltip>Move to different location</q-tooltip>
+                  </q-btn>
+                  <q-btn
+                    v-if="!s.open"
+                    flat
+                    round
+                    dense
+                    size="sm"
+                    icon="open_in_new"
+                    @click="markOpen(s)"
+                  >
+                    <q-tooltip>Mark as opened</q-tooltip>
+                  </q-btn>
+                </div>
               </q-item-section>
             </q-item>
           </q-list>
@@ -65,12 +107,25 @@
           <div class="text-grey">No stock.</div>
         </q-card-section>
 
+        <!-- Inventory correction button -->
+        <q-card-section class="q-pt-none">
+          <q-btn
+            outline
+            color="secondary"
+            label="Set Inventory"
+            icon="calculate"
+            size="sm"
+            @click="openInventoryDialog"
+            data-testid="inventory-correction-btn"
+          />
+        </q-card-section>
+
         <!-- Add / Consume stock -->
         <q-card-section class="q-pt-none">
           <div class="text-subtitle2 q-mb-sm">Adjust stock</div>
           <div class="row q-col-gutter-sm">
             <div class="col-6">
-              <q-input v-model.number="stockAddQty" type="number" min="1" dense outlined label="Qty" class="q-mb-sm" data-testid="product-add-qty" />
+              <q-input v-model.number="stockAddQty" type="number" min="1" dense outlined label="Qty" class="q-mb-sm" />
               <q-select
                 v-model="stockAddLocationId"
                 :options="locationOptions"
@@ -81,13 +136,12 @@
                 map-options
                 clearable
                 class="q-mb-sm"
-                data-testid="product-add-location"
               />
-              <q-btn label="Add" color="green" size="sm" outline class="full-width" @click="doAddStock" :loading="stockLoading" data-testid="product-add-stock-button" />
+              <q-btn label="Add" color="green" size="sm" outline class="full-width" @click="doAddStock" :loading="stockLoading" />
             </div>
             <div class="col-6">
-              <q-input v-model.number="stockConsumeQty" type="number" min="1" dense outlined label="Qty" class="q-mb-sm" data-testid="product-consume-qty" />
-              <q-btn label="Consume" color="orange" size="sm" outline class="full-width" @click="doConsumeStock" :loading="stockLoading" data-testid="product-consume-stock-button" />
+              <q-input v-model.number="stockConsumeQty" type="number" min="1" dense outlined label="Qty" class="q-mb-sm" />
+              <q-btn label="Consume" color="orange" size="sm" outline class="full-width" @click="doConsumeStock" :loading="stockLoading" />
             </div>
           </div>
         </q-card-section>
@@ -101,7 +155,7 @@
 
     <!-- Edit dialog -->
     <q-dialog v-model="editDialog" data-testid="product-edit-dialog">
-      <q-card style="min-width: 320px" data-testid="product-edit-card">
+      <q-card style="min-width: 320px">
         <q-card-section>
           <div class="text-h6">Edit Product</div>
         </q-card-section>
@@ -126,11 +180,100 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <!-- Move stock dialog -->
+    <q-dialog v-model="moveDialog" data-testid="stock-move-dialog">
+      <q-card style="min-width: 300px">
+        <q-card-section>
+          <div class="text-h6">Move Stock</div>
+          <div class="text-caption">{{ movingEntry?.location_name || 'Unspecified' }} → ?</div>
+        </q-card-section>
+        <q-card-section>
+          <q-select
+            v-model="moveTargetLocation"
+            :options="locationOptions"
+            label="Move to location"
+            outlined
+            dense
+            emit-value
+            map-options
+            data-testid="stock-move-location-select"
+          />
+          <q-input
+            v-model.number="moveQuantity"
+            type="number"
+            :max="movingEntry?.quantity"
+            min="1"
+            label="Quantity to move"
+            outlined
+            dense
+            class="q-mt-sm"
+          />
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn flat label="Cancel" v-close-popup />
+          <q-btn
+            flat
+            label="Move"
+            color="primary"
+            @click="doMoveStock"
+            :loading="moveLoading"
+            data-testid="stock-move-confirm-btn"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- Inventory correction dialog -->
+    <q-dialog v-model="inventoryDialog" data-testid="inventory-correction-dialog">
+      <q-card style="min-width: 300px">
+        <q-card-section>
+          <div class="text-h6">Set Inventory</div>
+          <div class="text-caption">Current total: {{ totalStock }}</div>
+        </q-card-section>
+        <q-card-section>
+          <q-input
+            v-model.number="inventoryNewAmount"
+            type="number"
+            min="0"
+            label="Set total stock to"
+            outlined
+            dense
+            data-testid="inventory-amount-input"
+          />
+          <q-select
+            v-model="inventoryLocationId"
+            :options="locationOptions"
+            label="Location (optional)"
+            outlined
+            dense
+            emit-value
+            map-options
+            clearable
+            class="q-mt-sm"
+          />
+          <div v-if="inventoryDiff !== 0" class="text-caption q-mt-sm" :class="inventoryDiff > 0 ? 'text-positive' : 'text-negative'">
+            {{ inventoryDiff > 0 ? `+${inventoryDiff}` : inventoryDiff }} adjustment
+          </div>
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn flat label="Cancel" v-close-popup />
+          <q-btn
+            flat
+            label="Confirm"
+            color="primary"
+            @click="doInventoryCorrection"
+            :loading="inventoryLoading"
+            data-testid="inventory-confirm-btn"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useDeviceStore } from '../stores/device'
 import {
   getMeProducts,
@@ -141,6 +284,9 @@ import {
   getMeLocations,
   addMeProductBarcode,
   removeMeProductBarcode,
+  transferStock,
+  inventoryStock,
+  openStock,
 } from '../services/api'
 import { useQuasar } from 'quasar'
 
@@ -162,6 +308,44 @@ const stockConsumeQty = ref(1)
 const stockAddLocationId = ref(null)
 const stockLoading = ref(false)
 const newBarcode = ref('')
+
+// Phase 3.5: Move stock dialog
+const moveDialog = ref(false)
+const movingEntry = ref(null)
+const moveTargetLocation = ref(null)
+const moveQuantity = ref(1)
+const moveLoading = ref(false)
+
+// Phase 3.5: Inventory correction dialog
+const inventoryDialog = ref(false)
+const inventoryNewAmount = ref(0)
+const inventoryLocationId = ref(null)
+const inventoryLoading = ref(false)
+
+// Computed: total stock
+const totalStock = computed(() => {
+  return detailStock.value.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0)
+})
+
+// Computed: inventory adjustment difference
+const inventoryDiff = computed(() => {
+  return (inventoryNewAmount.value || 0) - totalStock.value
+})
+
+// Helper: check if date is expiring soon (within 7 days)
+function isExpiringSoon(dateStr) {
+  if (!dateStr) return false
+  const exp = new Date(dateStr)
+  const now = new Date()
+  const diff = (exp - now) / (1000 * 60 * 60 * 24)
+  return diff > 0 && diff <= 7
+}
+
+// Helper: check if expired
+function isExpired(dateStr) {
+  if (!dateStr) return false
+  return new Date(dateStr) < new Date()
+}
 
 onMounted(async () => {
   loadProducts()
@@ -306,6 +490,99 @@ async function removeBarcodeInEdit(bc) {
     $q.notify({ type: 'positive', message: 'Barcode removed' })
   } catch (e) {
     $q.notify({ type: 'negative', message: e.message || 'Failed to remove barcode' })
+  }
+}
+
+// Phase 3.5: Open move dialog
+function openMoveDialog(entry) {
+  movingEntry.value = entry
+  moveTargetLocation.value = null
+  moveQuantity.value = entry.quantity || 1
+  moveDialog.value = true
+}
+
+// Phase 3.5: Execute move stock
+async function doMoveStock() {
+  if (!selectedProduct.value || !movingEntry.value || !moveTargetLocation.value) {
+    $q.notify({ type: 'warning', message: 'Select a destination location' })
+    return
+  }
+  if (moveQuantity.value < 1 || moveQuantity.value > movingEntry.value.quantity) {
+    $q.notify({ type: 'warning', message: 'Invalid quantity' })
+    return
+  }
+  moveLoading.value = true
+  const fp = await deviceStore.ensureFingerprint()
+  try {
+    await transferStock(
+      fp,
+      selectedProduct.value.id,
+      movingEntry.value.location_id,
+      moveTargetLocation.value,
+      moveQuantity.value
+    )
+    $q.notify({ type: 'positive', message: 'Stock moved' })
+    moveDialog.value = false
+    // Refresh detail
+    const data = await getMeProductDetail(fp, selectedProduct.value.id)
+    if (data.product) selectedProduct.value = data.product
+    detailStock.value = data.stock || []
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e.message || 'Move failed' })
+  } finally {
+    moveLoading.value = false
+  }
+}
+
+// Phase 3.5: Mark stock as opened
+async function markOpen(entry) {
+  if (!entry || !entry.id) return
+  const fp = await deviceStore.ensureFingerprint()
+  try {
+    await openStock(fp, entry.id)
+    $q.notify({ type: 'positive', message: 'Marked as opened' })
+    // Refresh detail
+    const data = await getMeProductDetail(fp, selectedProduct.value.id)
+    if (data.product) selectedProduct.value = data.product
+    detailStock.value = data.stock || []
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e.message || 'Failed to mark as opened' })
+  }
+}
+
+// Phase 3.5: Open inventory correction dialog
+function openInventoryDialog() {
+  inventoryNewAmount.value = totalStock.value
+  inventoryLocationId.value = null
+  inventoryDialog.value = true
+}
+
+// Phase 3.5: Execute inventory correction
+async function doInventoryCorrection() {
+  if (!selectedProduct.value) return
+  if (inventoryNewAmount.value < 0) {
+    $q.notify({ type: 'warning', message: 'Amount cannot be negative' })
+    return
+  }
+  inventoryLoading.value = true
+  const fp = await deviceStore.ensureFingerprint()
+  try {
+    await inventoryStock(
+      fp,
+      selectedProduct.value.id,
+      inventoryNewAmount.value,
+      inventoryLocationId.value
+    )
+    $q.notify({ type: 'positive', message: 'Inventory updated' })
+    inventoryDialog.value = false
+    // Refresh detail
+    const data = await getMeProductDetail(fp, selectedProduct.value.id)
+    if (data.product) selectedProduct.value = data.product
+    detailStock.value = data.stock || []
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e.message || 'Inventory correction failed' })
+  } finally {
+    inventoryLoading.value = false
   }
 }
 </script>

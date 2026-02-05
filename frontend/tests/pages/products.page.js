@@ -1,7 +1,5 @@
 /**
  * Products Page Object
- * 
- * Encapsulates all interactions with the products list and detail pages.
  */
 import { BasePage } from './base.page.js'
 
@@ -9,43 +7,43 @@ export class ProductsPage extends BasePage {
   constructor(page) {
     super(page)
     
-    // Search and filter
-    this.searchInput = page.getByTestId('products-search')
-    this.categoryFilter = page.getByTestId('products-category-filter')
-    this.addButton = page.getByTestId('products-add-button')
+    // Page elements
+    this.pageContainer = this.getByTestId('products-page')
+    this.searchInput = this.getByTestId('products-search')
+    this.loadingState = this.getByTestId('products-loading')
+    this.emptyState = this.getByTestId('products-empty')
+    this.productList = this.getByTestId('products-list')
     
-    // Product list
-    this.productList = page.getByTestId('products-list')
-    this.productCards = page.getByTestId('product-card')
-    this.emptyState = page.getByText(/no products/i)
-    this.loadingIndicator = page.locator('.q-spinner')
+    // Product card
+    this.productCard = this.getByTestId('product-card')
     
-    // Product detail dialog
-    this.detailDialog = page.getByTestId('product-detail-dialog')
-    this.editButton = page.getByTestId('product-edit-button')
-    this.deleteButton = page.getByTestId('product-delete-button')
+    // Detail dialog
+    this.detailDialog = this.getByTestId('product-detail-dialog')
+    this.detailName = this.getByTestId('product-detail-name')
+    this.barcodesList = this.getByTestId('product-barcodes-list')
+    this.barcodeChip = this.getByTestId('product-barcode-chip')
     
-    // Product edit dialog
-    this.editDialog = page.getByTestId('product-edit-dialog')
-    this.nameInput = page.getByTestId('product-name-input')
-    this.descriptionInput = page.getByTestId('product-description-input')
-    this.categoryInput = page.getByTestId('product-category-input')
-    this.saveButton = page.getByTestId('product-save-button')
-    this.cancelButton = page.getByTestId('product-cancel-button')
+    // Stock adjustment
+    this.addQtyInput = this.getByTestId('product-add-qty')
+    this.addLocationSelect = this.getByTestId('product-add-location')
+    this.addStockBtn = this.getByTestId('product-add-stock-button')
+    this.consumeQtyInput = this.getByTestId('product-consume-qty')
+    this.consumeStockBtn = this.getByTestId('product-consume-stock-button')
+    this.editButton = this.getByTestId('product-edit-button')
+    this.detailCloseBtn = this.getByTestId('product-detail-close')
     
-    // Barcode management
-    this.barcodesList = page.getByTestId('product-barcodes-list')
-    this.addBarcodeButton = page.getByTestId('product-add-barcode-button')
-    this.barcodeInput = page.getByTestId('product-barcode-input')
+    // Edit dialog
+    this.editDialog = this.getByTestId('product-edit-dialog')
+    this.nameInput = this.getByTestId('product-name-input')
+    this.descriptionInput = this.getByTestId('product-description-input')
+    this.categoryInput = this.getByTestId('product-category-input')
+    this.barcodeInput = this.getByTestId('product-barcode-input')
+    this.addBarcodeBtn = this.getByTestId('product-add-barcode-button')
+    this.cancelButton = this.getByTestId('product-cancel-button')
+    this.saveButton = this.getByTestId('product-save-button')
     
-    // Stock management
-    this.addStockButton = page.getByTestId('product-add-stock-button')
-    this.consumeStockButton = page.getByTestId('product-consume-stock-button')
-    
-    // Fallback selectors
-    this.searchInputFallback = page.getByPlaceholder(/search/i)
-    this.addButtonFallback = page.getByRole('button', { name: /add product/i })
-    this.pageTitle = page.getByRole('heading', { name: 'Products' })
+    // Fallbacks
+    this.searchInputFallback = page.getByPlaceholder('Search products')
   }
 
   async goto() {
@@ -56,169 +54,120 @@ export class ProductsPage extends BasePage {
     return this.page.url().includes('/products')
   }
 
-  async waitForLoad() {
-    await this.pageTitle.waitFor({ state: 'visible' })
-    // Wait for either products to load or empty state
-    await Promise.race([
-      this.productList.waitFor({ state: 'visible' }).catch(() => {}),
-      this.emptyState.waitFor({ state: 'visible' }).catch(() => {}),
-      this.page.waitForTimeout(3000)
-    ])
+  /**
+   * Get search input (with fallback)
+   */
+  getSearchInput() {
+    return this.searchInput.or(this.searchInputFallback)
   }
 
   /**
-   * Search for products by name
-   * @param {string} query 
+   * Search for products
    */
   async search(query) {
-    const input = await this.searchInput.isVisible().catch(() => false)
-      ? this.searchInput
-      : this.searchInputFallback
-    await input.fill(query)
-    // Wait for debounced search
-    await this.page.waitForTimeout(500)
+    await this.getSearchInput().fill(query)
+    await this.page.waitForTimeout(300) // Debounce
   }
 
   /**
-   * Clear search input
-   */
-  async clearSearch() {
-    const input = await this.searchInput.isVisible().catch(() => false)
-      ? this.searchInput
-      : this.searchInputFallback
-    await input.clear()
-  }
-
-  /**
-   * Filter by category
-   * @param {string} category 
-   */
-  async filterByCategory(category) {
-    await this.categoryFilter.click()
-    await this.page.getByRole('option', { name: category }).click()
-  }
-
-  /**
-   * Get count of visible products
+   * Get product count
    */
   async getProductCount() {
-    const cards = this.page.locator('[data-testid="product-card"], .product-card, .q-card')
-    return await cards.count()
+    return this.productCard.count()
   }
 
   /**
-   * Click on a product card by name
-   * @param {string} productName 
+   * Click on a product by name
    */
-  async clickProduct(productName) {
-    await this.page.getByText(productName).first().click()
+  async openProduct(name) {
+    await this.page.locator(`[data-testid="product-card"]:has-text("${name}")`).click()
   }
 
   /**
-   * Open add product dialog
+   * Click first product in list
    */
-  async openAddDialog() {
-    const btn = await this.addButton.isVisible().catch(() => false)
-      ? this.addButton
-      : this.addButtonFallback
-    await btn.click()
-  }
-
-  /**
-   * Fill product form in edit dialog
-   * @param {Object} product 
-   * @param {string} product.name
-   * @param {string} [product.description]
-   * @param {string} [product.category]
-   */
-  async fillProductForm({ name, description, category }) {
-    if (name) {
-      const nameField = await this.nameInput.isVisible().catch(() => false)
-        ? this.nameInput
-        : this.page.getByLabel(/name/i).first()
-      await nameField.fill(name)
-    }
-    if (description) {
-      const descField = await this.descriptionInput.isVisible().catch(() => false)
-        ? this.descriptionInput
-        : this.page.getByLabel(/description/i)
-      await descField.fill(description)
-    }
-    if (category) {
-      const catField = await this.categoryInput.isVisible().catch(() => false)
-        ? this.categoryInput
-        : this.page.getByLabel(/category/i)
-      await catField.fill(category)
-    }
-  }
-
-  /**
-   * Save product form
-   */
-  async saveProduct() {
-    const btn = await this.saveButton.isVisible().catch(() => false)
-      ? this.saveButton
-      : this.page.getByRole('button', { name: /save/i })
-    await btn.click()
-  }
-
-  /**
-   * Cancel product form
-   */
-  async cancelEdit() {
-    const btn = await this.cancelButton.isVisible().catch(() => false)
-      ? this.cancelButton
-      : this.page.getByRole('button', { name: /cancel/i })
-    await btn.click()
+  async openFirstProduct() {
+    await this.productCard.first().click()
   }
 
   /**
    * Check if detail dialog is open
    */
   async isDetailDialogOpen() {
-    return await this.detailDialog.isVisible().catch(() => false) ||
-           await this.page.getByRole('dialog').isVisible()
+    return this.detailDialog.isVisible().catch(() => false)
   }
 
   /**
    * Close detail dialog
    */
   async closeDetailDialog() {
-    await this.page.getByRole('button', { name: /close|×/i }).click()
+    await this.detailCloseBtn.click()
   }
 
   /**
-   * Open edit mode from detail dialog
+   * Open edit dialog from detail
    */
-  async openEditMode() {
-    const btn = await this.editButton.isVisible().catch(() => false)
-      ? this.editButton
-      : this.page.getByRole('button', { name: /edit/i })
-    await btn.click()
+  async openEditDialog() {
+    await this.editButton.click()
   }
 
   /**
-   * Delete product from detail dialog
+   * Check if edit dialog is open
    */
-  async deleteProduct() {
-    const btn = await this.deleteButton.isVisible().catch(() => false)
-      ? this.deleteButton
-      : this.page.getByRole('button', { name: /delete/i })
-    await btn.click()
-    // Confirm deletion if dialog appears
-    const confirmBtn = this.page.getByRole('button', { name: /confirm|yes|delete/i })
-    if (await confirmBtn.isVisible()) {
-      await confirmBtn.click()
-    }
+  async isEditDialogOpen() {
+    return this.editDialog.isVisible().catch(() => false)
   }
 
   /**
-   * Add a barcode to the current product
-   * @param {string} barcode 
+   * Fill edit form
    */
-  async addBarcode(barcode) {
-    await this.addBarcodeButton.click()
-    await this.barcodeInput.fill(barcode)
-    await this.page.getByRole('button', { name: /add|save/i }).click()
+  async fillEditForm({ name, description, category }) {
+    if (name !== undefined) await this.nameInput.fill(name)
+    if (description !== undefined) await this.descriptionInput.fill(description)
+    if (category !== undefined) await this.categoryInput.fill(category)
+  }
+
+  /**
+   * Save edit
+   */
+  async saveEdit() {
+    await this.saveButton.click()
+  }
+
+  /**
+   * Cancel edit
+   */
+  async cancelEdit() {
+    await this.cancelButton.click()
+  }
+
+  /**
+   * Add stock to product
+   */
+  async addStock(quantity) {
+    await this.addQtyInput.fill(String(quantity))
+    await this.addStockBtn.click()
+  }
+
+  /**
+   * Consume stock from product
+   */
+  async consumeStock(quantity) {
+    await this.consumeQtyInput.fill(String(quantity))
+    await this.consumeStockBtn.click()
+  }
+
+  /**
+   * Check if loading
+   */
+  async isLoading() {
+    return this.loadingState.isVisible()
+  }
+
+  /**
+   * Check if empty state shown
+   */
+  async isEmpty() {
+    return this.emptyState.isVisible()
   }
 }

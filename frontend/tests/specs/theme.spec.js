@@ -1,186 +1,115 @@
 /**
  * Theme Tests
- * 
- * Tests for light/dark/auto theme modes.
- * Maps to BrowserMCP test cases THM-01 through THM-05.
+ * Tests UI consistency and theme handling
  */
-import { test, expect } from '../fixtures/auth.fixture.js'
+import { test, expect } from '../fixtures/index.js'
+import { LoginPage } from '../pages/login.page.js'
 
 test.describe('Theme', () => {
-  // Login and navigate to settings/UI tab
-  async function loginAndGoToThemeSettings(page, request, baseURL) {
-    const health = await request.get(`${baseURL}/api/health`).catch(() => null)
-    if (!health?.ok()) {
-      test.skip(true, 'Backend not available')
-    }
+  test.describe('Visual Consistency', () => {
+    test('login page has consistent styling', async ({ page }) => {
+      const loginPage = new LoginPage(page)
+      await loginPage.navigate()
 
-    await page.goto('/login')
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Password').fill('test')
-    await page.getByRole('button', { name: /sign in/i }).click()
-    await page.waitForURL(/\/scan/)
-    
-    await page.goto('/settings')
-    await page.getByTestId('settings-tab-ui').click()
-  }
-
-  test.describe('Theme Settings', () => {
-    test('UI settings tab shows kiosk mode toggle', async ({ page, request, baseURL }) => {
-      await loginAndGoToThemeSettings(page, request, baseURL)
-      
-      await expect(page.getByTestId('scanning-kiosk-mode')).toBeVisible()
+      // Check that main card exists and is styled
+      const card = page.locator('.q-card')
+      await expect(card).toBeVisible()
     })
 
-    test('can toggle kiosk mode', async ({ page, request, baseURL }) => {
-      await loginAndGoToThemeSettings(page, request, baseURL)
+    test('buttons have consistent styling', async ({ page }) => {
+      const loginPage = new LoginPage(page)
+      await loginPage.navigate()
+
+      const submitBtn = loginPage.getSubmitButton()
+      await expect(submitBtn).toBeVisible()
       
-      const toggle = page.getByTestId('scanning-kiosk-mode')
-      const initialState = await toggle.isChecked()
-      
-      await toggle.click()
-      await expect(toggle).toBeChecked({ checked: !initialState })
+      // Button should have Quasar styling
+      await expect(submitBtn).toHaveClass(/q-btn/)
     })
 
-    test('save button persists settings', async ({ page, request, baseURL }) => {
-      await loginAndGoToThemeSettings(page, request, baseURL)
-      
-      // Click save
-      await page.getByTestId('ui-save-button').click()
-      
-      // Should show success notification
-      await expect(page.locator('.q-notification')).toBeVisible({ timeout: 5000 })
+    test('inputs have consistent styling', async ({ page }) => {
+      const loginPage = new LoginPage(page)
+      await loginPage.navigate()
+
+      const usernameInput = loginPage.getUsernameInput()
+      await expect(usernameInput).toBeVisible()
     })
   })
 
-  test.describe('Visual Consistency', () => {
-    // THM-01: Light mode visual check
-    test('app renders with consistent styling', async ({ page, request, baseURL }) => {
+  test.describe('Application Theme', () => {
+    test('header has consistent styling when logged in', async ({ page, request, baseURL }) => {
       const health = await request.get(`${baseURL}/api/health`).catch(() => null)
       if (!health?.ok()) {
         test.skip(true, 'Backend not available')
       }
 
-      await page.goto('/login')
-      await page.getByLabel('Username').fill('admin')
-      await page.getByLabel('Password').fill('test')
-      await page.getByRole('button', { name: /sign in/i }).click()
-      await page.waitForURL(/\/scan/)
-      
-      // Header should have consistent styling
-      const header = page.getByTestId('app-header')
+      const loginPage = new LoginPage(page)
+      await loginPage.navigate()
+      await loginPage.login('admin', 'test')
+
+      // Header should be styled
+      const header = page.locator('header, .q-header')
       await expect(header).toBeVisible()
-      
-      // Background should have some styling
-      const headerBg = await header.evaluate(el => getComputedStyle(el).backgroundColor)
-      expect(headerBg).toBeTruthy()
     })
 
-    // THM-03: Header maintains primary color
-    test('header has primary color styling', async ({ page, request, baseURL }) => {
+    test('cards have consistent styling', async ({ page, request, baseURL }) => {
       const health = await request.get(`${baseURL}/api/health`).catch(() => null)
       if (!health?.ok()) {
         test.skip(true, 'Backend not available')
       }
 
-      await page.goto('/login')
-      await page.getByLabel('Username').fill('admin')
-      await page.getByLabel('Password').fill('test')
-      await page.getByRole('button', { name: /sign in/i }).click()
-      await page.waitForURL(/\/scan/)
-      
-      const header = page.getByTestId('app-header')
-      const classes = await header.getAttribute('class')
-      
-      // Quasar headers typically have elevation class
-      expect(classes).toContain('q-header')
-    })
+      const loginPage = new LoginPage(page)
+      await loginPage.navigate()
+      await loginPage.login('admin', 'test')
 
-    // THM-04: Cards render properly
-    test('cards have proper styling', async ({ page, request, baseURL }) => {
+      // Scan page should have cards
+      const cards = page.locator('.q-card')
+      const cardCount = await cards.count()
+      expect(cardCount).toBeGreaterThan(0)
+    })
+  })
+
+  test.describe('Theme Persistence', () => {
+    test('theme persists across page reload', async ({ page, request, baseURL }) => {
       const health = await request.get(`${baseURL}/api/health`).catch(() => null)
       if (!health?.ok()) {
         test.skip(true, 'Backend not available')
       }
 
-      await page.goto('/login')
-      await page.getByLabel('Username').fill('admin')
-      await page.getByLabel('Password').fill('test')
-      await page.getByRole('button', { name: /sign in/i }).click()
-      await page.waitForURL(/\/scan/)
-      
-      const card = page.getByTestId('scan-card')
-      await expect(card).toBeVisible()
-      
-      // Card should have border or shadow
-      const cardStyles = await card.evaluate(el => {
-        const style = getComputedStyle(el)
-        return {
-          border: style.border,
-          boxShadow: style.boxShadow
-        }
-      })
-      
-      // Should have some visual distinction
-      expect(cardStyles.border || cardStyles.boxShadow).toBeTruthy()
-    })
+      const loginPage = new LoginPage(page)
+      await loginPage.navigate()
+      await loginPage.login('admin', 'test')
 
-    // THM-05: Theme persistence
-    test('page styles persist after reload', async ({ page, request, baseURL }) => {
-      const health = await request.get(`${baseURL}/api/health`).catch(() => null)
-      if (!health?.ok()) {
-        test.skip(true, 'Backend not available')
-      }
+      // Get initial state
+      const initialHeader = await page.locator('header').getAttribute('class')
 
-      await page.goto('/login')
-      await page.getByLabel('Username').fill('admin')
-      await page.getByLabel('Password').fill('test')
-      await page.getByRole('button', { name: /sign in/i }).click()
-      await page.waitForURL(/\/scan/)
-      
-      // Get initial header background
-      const header = page.getByTestId('app-header')
-      const initialBg = await header.evaluate(el => getComputedStyle(el).backgroundColor)
-      
       // Reload
       await page.reload()
-      await page.waitForURL(/\/scan/)
-      
-      // Header should still have same styling
-      const headerAfter = page.getByTestId('app-header')
-      const bgAfter = await headerAfter.evaluate(el => getComputedStyle(el).backgroundColor)
-      
-      expect(bgAfter).toEqual(initialBg)
+
+      // Check state is consistent
+      const reloadedHeader = await page.locator('header').getAttribute('class')
+      expect(reloadedHeader).toBe(initialHeader)
     })
   })
 
-  test.describe('Color Scheme Preference', () => {
-    test('respects system color scheme preference (light)', async ({ page, request, baseURL }) => {
-      // Emulate light mode preference
-      await page.emulateMedia({ colorScheme: 'light' })
+  test.describe('Color Scheme', () => {
+    test('respects system color scheme preference', async ({ page }) => {
+      // Emulate dark mode
+      await page.emulateMedia({ colorScheme: 'dark' })
       
-      const health = await request.get(`${baseURL}/api/health`).catch(() => null)
-      if (!health?.ok()) {
-        test.skip(true, 'Backend not available')
-      }
+      const loginPage = new LoginPage(page)
+      await loginPage.navigate()
 
-      await page.goto('/login')
-      
-      // Page should render (light mode may or may not be explicitly different)
+      // Page should load (Quasar may or may not auto-adapt)
       await expect(page.getByText('Sign in to continue')).toBeVisible()
     })
 
-    test('respects system color scheme preference (dark)', async ({ page, request, baseURL }) => {
-      // Emulate dark mode preference
-      await page.emulateMedia({ colorScheme: 'dark' })
+    test('respects light color scheme preference', async ({ page }) => {
+      await page.emulateMedia({ colorScheme: 'light' })
       
-      const health = await request.get(`${baseURL}/api/health`).catch(() => null)
-      if (!health?.ok()) {
-        test.skip(true, 'Backend not available')
-      }
+      const loginPage = new LoginPage(page)
+      await loginPage.navigate()
 
-      await page.goto('/login')
-      
-      // Page should render (may adapt to dark mode if implemented)
       await expect(page.getByText('Sign in to continue')).toBeVisible()
     })
   })

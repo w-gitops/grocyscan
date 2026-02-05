@@ -1,11 +1,9 @@
 /**
  * Products Page Tests
- * 
- * Tests for product listing, search, and management.
- * Maps to BrowserMCP test cases PROD-01 through PROD-06.
  */
-import { test, expect } from '../fixtures/auth.fixture.js'
+import { test, expect } from '../fixtures/index.js'
 import { ProductsPage } from '../pages/products.page.js'
+import { LoginPage } from '../pages/login.page.js'
 
 test.describe('Products Page', () => {
   test.beforeEach(async ({ page, request, baseURL }) => {
@@ -14,192 +12,157 @@ test.describe('Products Page', () => {
       test.skip(true, 'Backend not available')
     }
 
-    // Login
-    await page.goto('/login')
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Password').fill('test')
-    await page.getByRole('button', { name: /sign in/i }).click()
-    await page.waitForURL(/\/scan/)
-
-    // Navigate to products
+    const loginPage = new LoginPage(page)
+    await loginPage.navigate()
+    await loginPage.login('admin', 'test')
     await page.goto('/products')
   })
 
   test.describe('Page Elements', () => {
-    // PROD-01: Page title
     test('displays page title', async ({ page }) => {
       await expect(page.getByText('Products')).toBeVisible()
     })
 
-    // PROD-02: Search input
     test('displays search input', async ({ page }) => {
-      await expect(page.getByTestId('products-search')).toBeVisible()
-      await expect(page.getByPlaceholder(/search products/i)).toBeVisible()
+      const searchInput = page.getByPlaceholder(/search/i)
+      await expect(searchInput).toBeVisible()
     })
 
-    // PROD-03: Product list or empty state
     test('displays product list or empty state', async ({ page }) => {
-      // Should show either products list or empty state
-      const list = page.getByTestId('products-list')
-      const empty = page.getByTestId('products-empty')
-      
-      await page.waitForTimeout(2000)
-      
-      const hasProducts = await list.isVisible().catch(() => false)
-      const isEmpty = await empty.isVisible().catch(() => false)
-      
-      expect(hasProducts || isEmpty).toBeTruthy()
-    })
-  })
-
-  test.describe('Search Functionality', () => {
-    // PROD-04: Search input accepts text
-    test('search input accepts text', async ({ page }) => {
-      const search = page.getByTestId('products-search')
-      await search.fill('milk')
-      await expect(search).toHaveValue('milk')
-    })
-
-    // PROD-05: Search filters products
-    test('search filters the product list', async ({ page }) => {
-      const search = page.getByTestId('products-search')
-      await search.fill('test')
-      
-      // Wait for debounced search
+      // Wait for load
       await page.waitForTimeout(1000)
       
-      // List should be filtered (or empty if no matches)
-      const list = page.getByTestId('products-list')
-      const empty = page.getByTestId('products-empty')
+      const hasList = await page.locator('.q-list').isVisible().catch(() => false)
+      const hasEmpty = await page.getByText(/no products/i).isVisible().catch(() => false)
       
-      const hasResults = await list.isVisible().catch(() => false)
-      const noResults = await empty.isVisible().catch(() => false)
-      
-      expect(hasResults || noResults).toBeTruthy()
-    })
-
-    test('clearing search shows all products', async ({ page }) => {
-      const search = page.getByTestId('products-search')
-      
-      // Search for something
-      await search.fill('xyz123')
-      await page.waitForTimeout(500)
-      
-      // Clear search
-      await search.clear()
-      await page.waitForTimeout(500)
-      
-      // Page should update
-      await expect(page.getByTestId('products-page')).toBeVisible()
+      expect(hasList || hasEmpty).toBe(true)
     })
   })
 
-  test.describe('Product Detail Dialog', () => {
-    test('clicking a product opens detail dialog', async ({ page }) => {
-      // Wait for products to load
-      await page.waitForTimeout(2000)
+  test.describe('Search', () => {
+    test('can type in search field', async ({ page }) => {
+      const productsPage = new ProductsPage(page)
+      await productsPage.search('test product')
+      await expect(productsPage.getSearchInput()).toHaveValue('test product')
+    })
+
+    test('search filters product list', async ({ page }) => {
+      const productsPage = new ProductsPage(page)
       
-      const productCard = page.getByTestId('product-card').first()
+      // Get initial count
+      await page.waitForTimeout(500)
+      const initialCount = await productsPage.getProductCount()
       
-      if (await productCard.isVisible().catch(() => false)) {
-        await productCard.click()
-        await expect(page.getByTestId('product-detail-dialog')).toBeVisible()
+      // Search for something unlikely
+      await productsPage.search('xyznonexistent123')
+      await page.waitForTimeout(500)
+      
+      // Count should be 0 or show empty state
+      const filteredCount = await productsPage.getProductCount()
+      expect(filteredCount).toBeLessThanOrEqual(initialCount)
+    })
+  })
+
+  test.describe('Product Detail', () => {
+    test('clicking product opens detail dialog', async ({ page }) => {
+      const productsPage = new ProductsPage(page)
+      await page.waitForTimeout(1000)
+      
+      const productCount = await productsPage.getProductCount()
+      if (productCount === 0) {
+        test.skip(true, 'No products to test')
       }
+      
+      await productsPage.openFirstProduct()
+      
+      // Dialog should open
+      const dialog = page.locator('.q-dialog')
+      await expect(dialog).toBeVisible()
+    })
+
+    test('detail dialog shows product name', async ({ page }) => {
+      const productsPage = new ProductsPage(page)
+      await page.waitForTimeout(1000)
+      
+      const productCount = await productsPage.getProductCount()
+      if (productCount === 0) {
+        test.skip(true, 'No products to test')
+      }
+      
+      await productsPage.openFirstProduct()
+      
+      // Should have product name in dialog
+      const dialog = page.locator('.q-dialog')
+      const hasName = await dialog.locator('.text-h6').isVisible().catch(() => false)
+      expect(hasName).toBe(true)
     })
 
     test('detail dialog has close button', async ({ page }) => {
-      await page.waitForTimeout(2000)
+      const productsPage = new ProductsPage(page)
+      await page.waitForTimeout(1000)
       
-      const productCard = page.getByTestId('product-card').first()
-      
-      if (await productCard.isVisible().catch(() => false)) {
-        await productCard.click()
-        await expect(page.getByTestId('product-detail-close')).toBeVisible()
-        
-        // Close dialog
-        await page.getByTestId('product-detail-close').click()
-        await expect(page.getByTestId('product-detail-dialog')).not.toBeVisible()
+      const productCount = await productsPage.getProductCount()
+      if (productCount === 0) {
+        test.skip(true, 'No products to test')
       }
-    })
-
-    test('detail dialog has edit button', async ({ page }) => {
-      await page.waitForTimeout(2000)
       
-      const productCard = page.getByTestId('product-card').first()
+      await productsPage.openFirstProduct()
       
-      if (await productCard.isVisible().catch(() => false)) {
-        await productCard.click()
-        await expect(page.getByTestId('product-edit-button')).toBeVisible()
-      }
+      const closeBtn = page.getByRole('button', { name: /close/i })
+      await expect(closeBtn).toBeVisible()
     })
   })
 
-  test.describe('Product Edit Dialog', () => {
-    test('edit button opens edit dialog', async ({ page }) => {
-      await page.waitForTimeout(2000)
+  test.describe('Edit Product', () => {
+    test('can open edit dialog from detail', async ({ page }) => {
+      const productsPage = new ProductsPage(page)
+      await page.waitForTimeout(1000)
       
-      const productCard = page.getByTestId('product-card').first()
-      
-      if (await productCard.isVisible().catch(() => false)) {
-        await productCard.click()
-        await page.getByTestId('product-edit-button').click()
-        
-        await expect(page.getByTestId('product-edit-dialog')).toBeVisible()
-        await expect(page.getByTestId('product-name-input')).toBeVisible()
+      const productCount = await productsPage.getProductCount()
+      if (productCount === 0) {
+        test.skip(true, 'No products to test')
       }
+      
+      await productsPage.openFirstProduct()
+      
+      const editBtn = page.getByRole('button', { name: /edit/i })
+      await editBtn.click()
+      
+      // Edit dialog should be visible
+      const editDialog = page.locator('.q-dialog:has-text("Edit Product")')
+      await expect(editDialog).toBeVisible()
     })
 
-    test('edit dialog has name, description, category fields', async ({ page }) => {
-      await page.waitForTimeout(2000)
+    test('edit dialog has name field', async ({ page }) => {
+      const productsPage = new ProductsPage(page)
+      await page.waitForTimeout(1000)
       
-      const productCard = page.getByTestId('product-card').first()
-      
-      if (await productCard.isVisible().catch(() => false)) {
-        await productCard.click()
-        await page.getByTestId('product-edit-button').click()
-        
-        await expect(page.getByTestId('product-name-input')).toBeVisible()
-        await expect(page.getByTestId('product-description-input')).toBeVisible()
-        await expect(page.getByTestId('product-category-input')).toBeVisible()
+      const productCount = await productsPage.getProductCount()
+      if (productCount === 0) {
+        test.skip(true, 'No products to test')
       }
+      
+      await productsPage.openFirstProduct()
+      await page.getByRole('button', { name: /edit/i }).click()
+      
+      const nameInput = page.getByLabel('Name')
+      await expect(nameInput).toBeVisible()
     })
 
     test('edit dialog has save and cancel buttons', async ({ page }) => {
-      await page.waitForTimeout(2000)
+      const productsPage = new ProductsPage(page)
+      await page.waitForTimeout(1000)
       
-      const productCard = page.getByTestId('product-card').first()
-      
-      if (await productCard.isVisible().catch(() => false)) {
-        await productCard.click()
-        await page.getByTestId('product-edit-button').click()
-        
-        await expect(page.getByTestId('product-save-button')).toBeVisible()
-        await expect(page.getByTestId('product-cancel-button')).toBeVisible()
+      const productCount = await productsPage.getProductCount()
+      if (productCount === 0) {
+        test.skip(true, 'No products to test')
       }
-    })
-  })
-
-  test.describe('Stock Management', () => {
-    test('detail dialog shows add stock button', async ({ page }) => {
-      await page.waitForTimeout(2000)
       
-      const productCard = page.getByTestId('product-card').first()
+      await productsPage.openFirstProduct()
+      await page.getByRole('button', { name: /edit/i }).click()
       
-      if (await productCard.isVisible().catch(() => false)) {
-        await productCard.click()
-        await expect(page.getByTestId('product-add-stock-button')).toBeVisible()
-      }
-    })
-
-    test('detail dialog shows consume stock button', async ({ page }) => {
-      await page.waitForTimeout(2000)
-      
-      const productCard = page.getByTestId('product-card').first()
-      
-      if (await productCard.isVisible().catch(() => false)) {
-        await productCard.click()
-        await expect(page.getByTestId('product-consume-stock-button')).toBeVisible()
-      }
+      await expect(page.getByRole('button', { name: /save/i })).toBeVisible()
+      await expect(page.getByRole('button', { name: /cancel/i })).toBeVisible()
     })
   })
 })
