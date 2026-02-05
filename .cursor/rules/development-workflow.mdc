@@ -7,6 +7,12 @@ alwaysApply: true
 
 This project uses a **local development + remote deployment** workflow. Code changes are made locally and deployed to a remote development server for testing.
 
+## Branch and sync standard
+
+- **Starting work**: If you are on `main`, create and switch to a feature branch before making changes. If already on a feature branch, use it.
+- **Before pushing**: Always `git fetch origin` and pull/rebase your current branch so you have the latest remote state.
+- **Before pushing**: If `origin/main` has new commits, merge (or rebase onto) `origin/main` into your branch, resolve conflicts, then push. This reduces merge conflicts when multiple agents merge to main asynchronously.
+
 ## Server Details
 
 - **Remote Server**: `192.168.200.37` (SSH as `root`)

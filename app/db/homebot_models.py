@@ -2,9 +2,10 @@
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON as SA_JSON, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON as SA_JSON, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -69,6 +70,50 @@ class HomebotPerson(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class HomebotQuantityUnit(Base):
+    """Quantity unit in homebot schema (Phase 3.5)."""
+
+    __tablename__ = "quantity_units"
+    __table_args__ = {"schema": "homebot"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.tenants.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    name_plural: Mapped[str | None] = mapped_column(String(100))
+    description: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class HomebotProductGroup(Base):
+    """Product group in homebot schema (Phase 3.5)."""
+
+    __tablename__ = "product_groups"
+    __table_args__ = {"schema": "homebot"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.tenants.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class HomebotQuantityUnitConversion(Base):
+    """Quantity unit conversion in homebot schema (Phase 3.5)."""
+
+    __tablename__ = "quantity_unit_conversions"
+    __table_args__ = {"schema": "homebot"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.tenants.id"), nullable=False)
+    product_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.products.id"))
+    from_qu_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.quantity_units.id"), nullable=False)
+    to_qu_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.quantity_units.id"), nullable=False)
+    factor: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class HomebotProduct(Base):
     """Product in homebot schema."""
 
@@ -89,6 +134,30 @@ class HomebotProduct(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Phase 3.5: Quantity unit FKs
+    qu_id_purchase: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.quantity_units.id"))
+    qu_id_stock: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.quantity_units.id"))
+    qu_id_consume: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.quantity_units.id"))
+
+    # Phase 3.5: Best-before settings
+    default_best_before_days: Mapped[int | None] = mapped_column(Integer)
+    default_best_before_days_after_open: Mapped[int | None] = mapped_column(Integer)
+    default_best_before_days_after_freezing: Mapped[int | None] = mapped_column(Integer)
+    default_best_before_days_after_thawing: Mapped[int | None] = mapped_column(Integer)
+    due_type: Mapped[int] = mapped_column(Integer, default=1)  # 1=best-before, 2=expiration
+
+    # Phase 3.5: Advanced fields
+    parent_product_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.products.id"))
+    product_group_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.product_groups.id"))
+    default_location_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.locations.id"))
+    default_consume_location_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.locations.id"))
+    tare_weight: Mapped[Decimal | None] = mapped_column(Numeric(15, 4))
+    enable_tare_weight_handling: Mapped[bool] = mapped_column(Boolean, default=False)
+    calories: Mapped[int | None] = mapped_column(Integer)
+    quick_consume_amount: Mapped[Decimal] = mapped_column(Numeric(15, 4), default=1)
+    move_on_open: Mapped[bool] = mapped_column(Boolean, default=False)
+    should_not_be_frozen: Mapped[bool] = mapped_column(Boolean, default=False)
 
     barcodes: Mapped[list["HomebotBarcode"]] = relationship("HomebotBarcode", back_populates="product")
 
@@ -160,10 +229,19 @@ class HomebotStock(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.tenants.id"), nullable=False)
     product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.products.id"), nullable=False)
     location_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.locations.id"))
-    quantity: Mapped[int] = mapped_column(Integer, default=0)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=0)
     expiration_date: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Phase 3.5: Enhanced stock entry fields
+    stock_id: Mapped[str | None] = mapped_column(String(36))  # Unique tracking ID for Grocycode
+    purchased_date: Mapped[date | None] = mapped_column(Date)
+    price: Mapped[Decimal | None] = mapped_column(Numeric(13, 2))
+    open: Mapped[bool] = mapped_column(Boolean, default=False)
+    opened_date: Mapped[date | None] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(Text)
+    shopping_location_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.locations.id"))
 
 
 class HomebotStockTransaction(Base):
@@ -176,11 +254,20 @@ class HomebotStockTransaction(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.tenants.id"), nullable=False)
     stock_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.stock.id"))
     transaction_type: Mapped[str] = mapped_column(String(20), nullable=False)
-    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False)
     from_location_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.locations.id"))
     to_location_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.locations.id"))
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Phase 3.5: Enhanced transaction log fields
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    product_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.products.id"))
+    spoiled: Mapped[bool] = mapped_column(Boolean, default=False)
+    correlation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))  # Links transfer pairs
+    transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))  # Groups multiple entries
+    undone: Mapped[bool] = mapped_column(Boolean, default=False)
+    undone_timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class HomebotQrNamespace(Base):
@@ -252,5 +339,54 @@ class HomebotDevice(Base):
     scanner_mode: Mapped[str] = mapped_column(String(50), nullable=False, default="camera")
     preferences: Mapped[dict | None] = mapped_column(JSON, default=dict)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class HomebotQrToken(Base):
+    """QR token for routing (Phase 4)."""
+
+    __tablename__ = "qr_tokens"
+    __table_args__ = {"schema": "homebot"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.tenants.id"), nullable=False)
+    namespace: Mapped[str] = mapped_column(String(50), nullable=False)
+    code: Mapped[str] = mapped_column(String(50), nullable=False)
+    checksum: Mapped[str | None] = mapped_column(String(5))
+    state: Mapped[str] = mapped_column(String(20), nullable=False, default="unassigned")
+    entity_type: Mapped[str | None] = mapped_column(String(50))
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class HomebotLabelTemplate(Base):
+    """Label template (Phase 4)."""
+
+    __tablename__ = "label_templates"
+    __table_args__ = {"schema": "homebot"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.tenants.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    template_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    schema: Mapped[dict | None] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class HomebotProductInstance(Base):
+    """Product instance (LPN) for tracking (Phase 4)."""
+
+    __tablename__ = "product_instances"
+    __table_args__ = {"schema": "homebot"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.tenants.id"), nullable=False)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.products.id"), nullable=False)
+    location_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("homebot.locations.id"))
+    lpn: Mapped[str | None] = mapped_column(String(100))
+    remaining_quantity: Mapped[int] = mapped_column(Integer, default=1)
+    expiration_date: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

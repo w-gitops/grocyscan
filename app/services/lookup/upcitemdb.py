@@ -173,7 +173,7 @@ class UPCItemDBProvider(BaseLookupProvider):
             async with httpx.AsyncClient(timeout=5) as client:
                 response = await client.get(
                     f"{UPCITEMDB_API_BASE}/lookup",
-                    params={"upc": "3017620422003"},
+                    params={"upc": "049000042566"},  # Coca-Cola
                 )
                 return response.status_code in (200, 404)
         except Exception:

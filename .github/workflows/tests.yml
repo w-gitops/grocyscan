@@ -33,27 +33,70 @@ jobs:
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
     env:
       DATABASE_URL: postgresql+asyncpg://grocyscan:grocyscan@localhost:5432/homebot
+      REDIS_URL: redis://localhost:6379/0
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Paths filter (pytest-relevant)
+        id: paths
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            pytest:
+              - 'app/**'
+              - 'tests/**'
+              - 'migrations/**'
+              - 'requirements*.txt'
+              - 'alembic.ini'
+              - 'pyproject.toml'
+
+      - name: Pass (no pytest-relevant changes)
+        if: steps.paths.outputs.pytest != 'true'
+        run: echo "No app/tests/migrations changes — passing without running pytest."
 
       - name: Set up Python
+        if: steps.paths.outputs.pytest == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Set up uv
+        if: steps.paths.outputs.pytest == 'true'
         uses: astral-sh/setup-uv@v2
         with:
-          cache: true
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
+          enable-cache: false
 
       - name: Install dependencies
+        if: steps.paths.outputs.pytest == 'true'
         run: uv pip install --system -r requirements.txt -r requirements-dev.txt
 
+      - name: Run migrations
+        if: steps.paths.outputs.pytest == 'true'
+        run: python -m alembic upgrade head
+
       - name: Run tests
-        run: python -m pytest tests/ -v --tb=short -n auto
+        if: steps.paths.outputs.pytest == 'true'
+        run: |
+          mkdir -p test-artifacts
+          python -m pytest tests/ -v --tb=short -n auto 2>&1 | tee test-artifacts/pytest.log
+          exit ${PIPESTATUS[0]}
+      - name: Upload test-artifacts
+        if: steps.paths.outputs.pytest == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts
+          path: test-artifacts/

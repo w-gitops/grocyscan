@@ -27,7 +27,7 @@ class SpaStaticFiles(StaticFiles):
 from app.api.middleware.correlation_id import CorrelationIdMiddleware
 from app.api.middleware.rate_limit import RateLimitMiddleware
 from app.api.middleware.session import SessionMiddleware
-from app.api.routes import api_router
+from app.api.routes import api_router, qr_redirect
 from app.config import settings
 from app.core.exceptions import AppException, AuthenticationError
 from app.core.logging import configure_logging, get_logger
@@ -128,6 +128,8 @@ def create_app() -> FastAPI:
 
     # Include API routes
     app.include_router(api_router, prefix="/api")
+    # QR redirect (Phase 4): GET /q/{token} - no auth
+    app.include_router(qr_redirect.router)
 
     # Root health (Phase 1: GET /health returns 200)
     @app.get("/health")
@@ -157,7 +159,7 @@ def create_app() -> FastAPI:
             headers={"Service-Worker-Allowed": "/"},
         )
 
-    # Vue frontend at / when frontend/dist exists (NiceGUI disabled)
+    # Vue frontend at / when frontend/dist exists
     _frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
     if _frontend_dist.exists():
         app.mount(

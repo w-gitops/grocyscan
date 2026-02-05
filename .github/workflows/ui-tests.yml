@@ -11,14 +11,188 @@ on:
       - dev
       - main
   workflow_dispatch:
+    inputs:
+      runner:
+        description: 'Runner to use (ubuntu-latest or self-hosted)'
+        required: false
+        default: 'ubuntu-latest'
+        type: choice
+        options:
+          - ubuntu-latest
+          - self-hosted
 
 permissions:
   contents: read
 
 jobs:
-  ui:
-    name: Playwright UI
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+  # GitHub-hosted: full stack (postgres, redis, backend) then Playwright
+  ui-ubuntu:
+    name: Playwright UI (ubuntu)
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.runner != 'self-hosted'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: grocyscan
+          POSTGRES_PASSWORD: grocyscan
+          POSTGRES_DB: homebot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U grocyscan"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DATABASE_URL: postgresql+asyncpg://grocyscan:grocyscan@localhost:5432/homebot
+      REDIS_URL: redis://localhost:6379/0
+      AUTH_USERNAME: admin
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Paths filter (playwright-relevant)
+        id: paths
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            playwright:
+              - 'app/**'
+              - 'frontend/**'
+              - 'tests/**'
+              - 'migrations/**'
+              - 'requirements*.txt'
+              - 'alembic.ini'
+
+      - name: Pass (no playwright-relevant changes)
+        if: github.event_name != 'workflow_dispatch' && steps.paths.outputs.playwright != 'true'
+        run: echo "No app/frontend/tests changes — passing without running Playwright."
+
+      - name: Set up Python
+        if: github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        if: github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true'
+        uses: astral-sh/setup-uv@v2
+        with:
+          enable-cache: false
+
+      - name: Install backend dependencies
+        if: github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true'
+        run: uv pip install --system -r requirements.txt -r requirements-dev.txt
+        working-directory: .
+
+      - name: Set E2E auth password hash
+        if: github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true'
+        run: |
+          HASH=$(python -c "from app.services.auth import hash_password; print(hash_password('test'))")
+          echo "AUTH_PASSWORD_HASH=$HASH" >> $GITHUB_ENV
+        working-directory: .
+
+      - name: Run migrations
+        if: github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true'
+        run: python -m alembic upgrade head
+        working-directory: .
+
+      - name: Start backend
+        if: github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true'
+        run: python -m uvicorn app.main:app --host 0.0.0.0 --port 3334 &
+        working-directory: .
+
+      - name: Wait for backend
+        if: github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true'
+        run: |
+          for i in $(seq 1 30); do
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:3334/health | grep -q 200; then
+              echo "Backend ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Backend did not become ready"
+          exit 1
+
+      - name: Set up Node
+        if: github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        if: github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true'
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        if: github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true'
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright browsers
+        if: (github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true') && steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps
+
+      - name: Install Playwright browser deps only (cache hit)
+        if: (github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true') && steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps
+
+      - name: Run Playwright tests
+        if: github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true'
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3334
+        run: |
+          set -o pipefail
+          npm run test:e2e 2>&1 | tee e2e-run.log
+
+      - name: Upload Playwright report
+        if: always() && (github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true')
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-ubuntu
+          path: frontend/playwright-report/
+
+      - name: Upload test results
+        if: always() && (github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true')
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: frontend/test-results/
+
+      - name: Upload E2E run log
+        if: always() && (github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true')
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-run-log
+          path: frontend/e2e-run.log
+
+  # Self-hosted Proxmox: backend already running, only Playwright
+  ui-selfhosted:
+    name: Playwright UI (self-hosted)
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.runner == 'self-hosted'
     runs-on: [self-hosted, linux, x64, proxmox-ui]
     defaults:
       run:

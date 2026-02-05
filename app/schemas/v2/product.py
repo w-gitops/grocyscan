@@ -29,6 +29,12 @@ class ProductUpdate(BaseModel):
     attributes: dict | None = None
 
 
+class BarcodeAddRequest(BaseModel):
+    """Add a barcode to a product."""
+
+    barcode: str = Field(..., min_length=1, max_length=100)
+
+
 class ProductResponse(BaseModel):
     """Product response."""
 
@@ -41,6 +47,7 @@ class ProductResponse(BaseModel):
     quantity_unit: str | None
     min_stock_quantity: int
     attributes: dict | None
+    barcodes: list[str] = Field(default_factory=list, description="Barcode(s) linked to this product")
     created_at: datetime
     updated_at: datetime
 

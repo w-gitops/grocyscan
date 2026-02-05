@@ -111,120 +111,129 @@ The highlighted border (shown as double lines above) provides immediate visual f
 
 ### 5.1 Component Changes
 
-**File: `app/ui/components/scanner.py`**
+**File: `frontend/src/components/BarcodeScanner.vue`**
 
-```python
-class BarcodeScanner:
-    def __init__(
-        self,
-        on_scan: Callable[[str], Union[None, Coroutine[Any, Any, None]]],
-        auto_focus: bool = True,
-        show_camera_button: bool = True,
-    ) -> None:
-        # ... existing code ...
-        self._scanner_gun_mode: bool = False
-        self._scanner_gun_button: ui.button | None = None
+```vue
+<template>
+  <div class="barcode-scanner">
+    <q-input
+      ref="barcodeInput"
+      v-model="barcode"
+      label="Barcode"
+      placeholder="Scan or enter barcode..."
+      :class="{ 'scanner-gun-active': scannerGunMode }"
+      @keyup.enter="handleSubmit"
+      clearable
+    >
+      <template v-slot:prepend>
+        <q-icon name="qr_code" />
+      </template>
+    </q-input>
 
-    def render(self) -> None:
-        # ... existing input and camera button code ...
-        
-        # Scanner Gun Mode toggle button (new)
-        self._scanner_gun_button = ui.button(
-            icon="barcode",
-            on_click=self._toggle_scanner_gun_mode
-        ).props("outline").tooltip("Enable Scanner Gun Mode")
-        
-        # ... existing search button ...
+    <div class="row q-gutter-sm q-mt-md">
+      <q-btn icon="photo_camera" label="Camera" @click="toggleCamera" />
+      
+      <!-- Scanner Gun Mode toggle button -->
+      <q-btn
+        :icon="scannerGunMode ? 'barcode' : 'barcode'"
+        :color="scannerGunMode ? 'primary' : undefined"
+        :outline="!scannerGunMode"
+        @click="toggleScannerGunMode"
+      >
+        <q-tooltip>{{ scannerGunMode ? 'Disable' : 'Enable' }} Scanner Gun Mode</q-tooltip>
+      </q-btn>
+      
+      <q-btn icon="search" label="Search" @click="$emit('search')" />
+    </div>
+  </div>
+</template>
 
-    async def _toggle_scanner_gun_mode(self) -> None:
-        """Toggle Scanner Gun Mode on/off."""
-        self._scanner_gun_mode = not self._scanner_gun_mode
-        
-        if self._scanner_gun_mode:
-            # Enable mode
-            self._scanner_gun_button.props(remove="outline")
-            self._scanner_gun_button.props("color=primary")
-            self._scanner_gun_button.tooltip("Disable Scanner Gun Mode")
-            self._input.classes(add="ring-2 ring-blue-500")
-            await self.focus_input()
-            # Persist to localStorage
-            await ui.run_javascript(
-                'localStorage.setItem("scannerGunMode", "true")'
-            )
-        else:
-            # Disable mode
-            self._scanner_gun_button.props("outline")
-            self._scanner_gun_button.props(remove="color=primary")
-            self._scanner_gun_button.tooltip("Enable Scanner Gun Mode")
-            self._input.classes(remove="ring-2 ring-blue-500")
-            await ui.run_javascript(
-                'localStorage.setItem("scannerGunMode", "false")'
-            )
+<script setup>
+import { ref, onMounted, watch } from 'vue'
 
-    async def focus_input(self) -> None:
-        """Focus the barcode input field."""
-        if self._input:
-            self._input.run_method("focus")
+const emit = defineEmits(['scan', 'search'])
 
-    async def _handle_submit(self, e: Any = None) -> None:
-        """Handle barcode submission from events."""
-        if self._input and self._input.value:
-            barcode = self._input.value.strip()
-            if barcode:
-                self._input.value = ""
-                result = self.on_scan(barcode)
-                if inspect.iscoroutine(result):
-                    await result
-                # Re-focus if Scanner Gun Mode is active
-                if self._scanner_gun_mode:
-                    await self.focus_input()
+const barcodeInput = ref(null)
+const barcode = ref('')
+const scannerGunMode = ref(false)
 
-    async def restore_focus_if_gun_mode(self) -> None:
-        """Restore focus to input if Scanner Gun Mode is active.
-        
-        Call this from parent page when popup closes.
-        """
-        if self._scanner_gun_mode:
-            await self.focus_input()
+const toggleScannerGunMode = () => {
+  scannerGunMode.value = !scannerGunMode.value
+  localStorage.setItem('scannerGunMode', scannerGunMode.value)
+  if (scannerGunMode.value) {
+    focusInput()
+  }
+}
+
+const focusInput = () => {
+  barcodeInput.value?.focus()
+}
+
+const handleSubmit = () => {
+  if (barcode.value.trim()) {
+    emit('scan', barcode.value.trim())
+    barcode.value = ''
+    if (scannerGunMode.value) {
+      focusInput()
+    }
+  }
+}
+
+// Restore state from localStorage
+onMounted(() => {
+  scannerGunMode.value = localStorage.getItem('scannerGunMode') === 'true'
+  if (scannerGunMode.value) {
+    focusInput()
+  }
+})
+
+// Expose focus method for parent to call after popup closes
+defineExpose({ focusInput, scannerGunMode })
+</script>
+
+<style scoped>
+.scanner-gun-active :deep(.q-field__control) {
+  box-shadow: 0 0 0 2px var(--q-primary);
+}
+</style>
 ```
 
 ### 5.2 Page Integration
 
-**File: `app/ui/pages/scan.py`**
+**File: `frontend/src/pages/ScanPage.vue`**
 
-```python
-class ScanPage:
-    async def handle_confirm(self, form_data: dict) -> None:
-        """Handle product confirmation from review popup."""
-        # ... existing confirmation logic ...
-        
-        # Close popup
-        self.review_popup.close()
-        
-        # Restore scanner focus if in gun mode
-        await self.scanner.restore_focus_if_gun_mode()
+```vue
+<script setup>
+import { ref } from 'vue'
+import BarcodeScanner from '../components/BarcodeScanner.vue'
 
-    async def handle_cancel(self) -> None:
-        """Handle review popup cancellation."""
-        self.review_popup.close()
-        
-        # Restore scanner focus if in gun mode
-        await self.scanner.restore_focus_if_gun_mode()
+const scannerRef = ref(null)
+
+const handleConfirm = (formData) => {
+  // ... confirmation logic ...
+  
+  // Restore scanner focus if in gun mode
+  if (scannerRef.value?.scannerGunMode) {
+    scannerRef.value.focusInput()
+  }
+}
+
+const handleCancel = () => {
+  // Restore scanner focus if in gun mode
+  if (scannerRef.value?.scannerGunMode) {
+    scannerRef.value.focusInput()
+  }
+}
+</script>
+
+<template>
+  <BarcodeScanner ref="scannerRef" @scan="handleScan" />
+</template>
 ```
 
 ### 5.3 State Persistence
 
-On component mount, check localStorage and restore state:
-
-```python
-async def _restore_scanner_gun_mode(self) -> None:
-    """Restore Scanner Gun Mode state from localStorage."""
-    result = await ui.run_javascript(
-        'localStorage.getItem("scannerGunMode")'
-    )
-    if result == "true":
-        await self._toggle_scanner_gun_mode()
-```
+State is persisted via localStorage in the Vue component (see `onMounted` and `toggleScannerGunMode` above).
 
 ---
 
@@ -304,8 +313,8 @@ Using cursor-browser-extension MCP tools:
 
 ### 8.1 Focus Management Considerations
 
-- NiceGUI's `run_method("focus")` may need a small delay after DOM updates
-- Consider using `await asyncio.sleep(0.1)` before focus if needed
+- Vue's `ref.focus()` may need `nextTick()` after DOM updates
+- Consider using `await nextTick()` before focus if needed
 - Test on both desktop and mobile browsers
 
 ### 8.2 Accessibility

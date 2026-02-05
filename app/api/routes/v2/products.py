@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps_v2 import get_current_user_v2, get_db_homebot, get_tenant_id_v2
 from app.db.homebot_models import HomebotBarcode, HomebotProduct
-from app.schemas.v2.product import ProductCreate, ProductResponse, ProductUpdate
+from app.schemas.v2.product import BarcodeAddRequest, ProductCreate, ProductResponse, ProductUpdate
 
 router = APIRouter()
 
@@ -51,6 +51,16 @@ async def create_product(
         db.add(barcode_row)
     await db.commit()
     await db.refresh(product)
+    barcodes_list = [body.barcode.strip()] if body.barcode and body.barcode.strip() else []
+    return _product_to_response(product, barcodes=barcodes_list)
+
+
+def _product_to_response(product: HomebotProduct, barcodes: list[str] | None = None) -> ProductResponse:
+    """Build ProductResponse. When barcodes is provided, use it to avoid lazy-loading in async context."""
+    if barcodes is not None:
+        data = {f: getattr(product, f) for f in ProductResponse.model_fields if f != "barcodes"}
+        data["barcodes"] = barcodes
+        return ProductResponse(**data)
     return ProductResponse.model_validate(product)
 
 
@@ -60,12 +70,14 @@ async def get_product(
     db: AsyncSession = Depends(get_db_homebot),
     _user: str = Depends(get_current_user_v2),
 ) -> ProductResponse:
-    """Get product by ID."""
+    """Get product by ID (includes barcodes)."""
     result = await db.execute(select(HomebotProduct).where(HomebotProduct.id == product_id, HomebotProduct.deleted_at.is_(None)))
     product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
-    return ProductResponse.model_validate(product)
+    barcode_rows = await db.execute(select(HomebotBarcode.barcode).where(HomebotBarcode.product_id == product_id))
+    barcodes = [r[0] for r in barcode_rows.all()]
+    return _product_to_response(product, barcodes)
 
 
 @router.patch("/{product_id}", response_model=ProductResponse)
@@ -87,7 +99,9 @@ async def update_product(
         setattr(product, key, value)
     await db.commit()
     await db.refresh(product)
-    return ProductResponse.model_validate(product)
+    barcode_rows = await db.execute(select(HomebotBarcode.barcode).where(HomebotBarcode.product_id == product_id))
+    barcodes = [r[0] for r in barcode_rows.all()]
+    return _product_to_response(product, barcodes)
 
 
 @router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -107,6 +121,62 @@ async def delete_product(
     await db.commit()
 
 
+@router.post("/{product_id}/barcodes", status_code=status.HTTP_201_CREATED)
+async def add_product_barcode(
+    product_id: UUID,
+    body: BarcodeAddRequest,
+    tenant_id: uuid.UUID = Depends(get_tenant_id_v2),
+    db: AsyncSession = Depends(get_db_homebot),
+    _user: str = Depends(get_current_user_v2),
+) -> dict[str, str]:
+    """Add a barcode to an existing product. Fails if barcode already linked to another product."""
+    result = await db.execute(select(HomebotProduct).where(HomebotProduct.id == product_id, HomebotProduct.deleted_at.is_(None)))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    barcode_str = body.barcode.strip()
+    existing = await db.execute(
+        select(HomebotBarcode).where(HomebotBarcode.tenant_id == tenant_id, HomebotBarcode.barcode == barcode_str)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Barcode already linked to another product",
+        )
+    db.add(
+        HomebotBarcode(
+            tenant_id=tenant_id,
+            product_id=product_id,
+            barcode=barcode_str,
+            is_primary=False,
+        )
+    )
+    await db.commit()
+    return {"status": "ok", "barcode": barcode_str}
+
+
+@router.delete("/{product_id}/barcodes/{barcode:path}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_product_barcode(
+    product_id: UUID,
+    barcode: str,
+    tenant_id: uuid.UUID = Depends(get_tenant_id_v2),
+    db: AsyncSession = Depends(get_db_homebot),
+    _user: str = Depends(get_current_user_v2),
+) -> None:
+    """Remove a barcode from a product."""
+    result = await db.execute(
+        select(HomebotBarcode).where(
+            HomebotBarcode.tenant_id == tenant_id,
+            HomebotBarcode.product_id == product_id,
+            HomebotBarcode.barcode == barcode.strip(),
+        )
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Barcode not found for this product")
+    await db.delete(row)
+    await db.commit()
+
+
 @router.get("", response_model=list[ProductResponse])
 async def list_products(
     q: str | None = None,
@@ -115,7 +185,7 @@ async def list_products(
     db: AsyncSession = Depends(get_db_homebot),
     _user: str = Depends(get_current_user_v2),
 ) -> list[ProductResponse]:
-    """List/search products. Use ?q= for name search, ?barcode= for exact barcode match."""
+    """List/search products. Use ?q= for name search, ?barcode= for exact barcode match. Includes barcodes."""
     from sqlalchemy import or_
 
     stmt = select(HomebotProduct).where(HomebotProduct.deleted_at.is_(None))
@@ -135,4 +205,13 @@ async def list_products(
         stmt = stmt.where(HomebotProduct.category == category.strip())
     result = await db.execute(stmt)
     products = result.scalars().unique().all()
-    return [ProductResponse.model_validate(p) for p in products]
+    if not products:
+        return []
+    product_ids = [p.id for p in products]
+    barcode_result = await db.execute(
+        select(HomebotBarcode.product_id, HomebotBarcode.barcode).where(HomebotBarcode.product_id.in_(product_ids))
+    )
+    barcodes_by_product: dict[UUID, list[str]] = {pid: [] for pid in product_ids}
+    for pid, b in barcode_result.all():
+        barcodes_by_product.setdefault(pid, []).append(b)
+    return [_product_to_response(p, barcodes_by_product.get(p.id, [])) for p in products]
