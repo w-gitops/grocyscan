@@ -11,6 +11,15 @@ on:
       - dev
       - main
   workflow_dispatch:
+    inputs:
+      runner:
+        description: 'Runner to use (ubuntu-latest or self-hosted)'
+        required: false
+        default: 'ubuntu-latest'
+        type: choice
+        options:
+          - ubuntu-latest
+          - self-hosted
 
 permissions:
   contents: read
@@ -19,7 +28,8 @@ jobs:
   ui:
     name: Playwright UI
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
+    # Support self-hosted runner via workflow dispatch input
+    runs-on: ${{ github.event.inputs.runner || 'ubuntu-latest' }}
     services:
       postgres:
         image: postgres:17-alpine
@@ -146,7 +156,7 @@ jobs:
         if: (github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true') && steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps
 
-      - name: Install Playwright deps only (cache hit)
+      - name: Install Playwright browser deps only (cache hit)
         if: (github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true') && steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps
 
@@ -171,7 +181,6 @@ jobs:
         with:
           name: test-results
           path: frontend/test-results/
-          if-no-files-found: ignore
 
       - name: Upload E2E run log
         if: always() && (github.event_name == 'workflow_dispatch' || steps.paths.outputs.playwright == 'true')

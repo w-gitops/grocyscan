@@ -1,163 +1,201 @@
-# Self-Hosted GitHub Actions Runner Setup
+# Self-Hosted Runner Setup for GrocyScan
 
-This guide covers setting up a self-hosted GitHub Actions runner for running Playwright UI tests.
+This document describes how to set up a self-hosted GitHub Actions runner for running Playwright E2E tests.
 
-## Benefits of Self-Hosted Runner
+## Why Self-Hosted?
 
-- **Faster Execution**: Pre-installed browsers, no download wait
-- **Consistent Environment**: Control over OS and dependencies
-- **Cost Savings**: No minutes usage for private repos
-- **Custom Resources**: More CPU/RAM for parallel tests
-- **Network Access**: Direct access to internal services
+- **Faster execution**: No queue time, dedicated resources
+- **Cost savings**: No GitHub Actions minutes consumed
+- **Network access**: Can access internal services (Grocy, databases)
+- **Persistent browser cache**: Faster Playwright browser installation
+
+---
 
 ## Hardware Requirements
 
-### Minimum
-- 2 CPU cores
-- 4 GB RAM
-- 20 GB disk space
-- Ubuntu 22.04 LTS (recommended)
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| CPU | 2 cores | 4+ cores |
+| RAM | 4 GB | 8+ GB |
+| Storage | 20 GB | 50+ GB SSD |
+| Network | Stable connection | Low latency to GitHub |
 
-### Recommended
-- 4+ CPU cores
-- 8+ GB RAM
-- 50+ GB SSD
-- Dedicated VM or container
+---
 
 ## Software Requirements
 
-- Node.js 18+ (LTS recommended)
-- npm 9+
-- Git
-- Playwright browsers
-- Docker (optional, for service containers)
+### Operating System
 
-## Installation Steps
+- Ubuntu 22.04 LTS (recommended)
+- Debian 11+
+- Other Linux distributions with systemd
 
-### 1. Prepare the Server
+### Required Software
 
 ```bash
-# Update system
-sudo apt update && sudo apt upgrade -y
+# System packages
+sudo apt-get update
+sudo apt-get install -y \
+  curl \
+  git \
+  wget \
+  ca-certificates \
+  gnupg \
+  lsb-release \
+  build-essential
 
-# Install Node.js 20 LTS
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-
-# Install dependencies for Playwright
-sudo apt install -y \
-  libnss3 \
-  libnspr4 \
-  libatk1.0-0 \
-  libatk-bridge2.0-0 \
-  libcups2 \
-  libdrm2 \
-  libxkbcommon0 \
-  libxcomposite1 \
-  libxdamage1 \
-  libxfixes3 \
-  libxrandr2 \
-  libgbm1 \
-  libasound2
-
-# Install Docker (optional)
-curl -fsSL https://get.docker.com | sudo bash
+# Docker (for database services)
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
 sudo usermod -aG docker $USER
+
+# Node.js 20.x
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Python 3.12
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt-get update
+sudo apt-get install -y python3.12 python3.12-venv python3.12-dev
+
+# uv (Python package manager)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Playwright browser dependencies
+npx playwright install-deps
 ```
 
-### 2. Create Runner User
+### Playwright Browsers
 
 ```bash
-# Create dedicated user
+# Install Playwright browsers globally
+npx playwright install
+
+# Or install to a specific location
+PLAYWRIGHT_BROWSERS_PATH=/opt/playwright npx playwright install
+```
+
+---
+
+## Runner Installation
+
+### 1. Create Runner User
+
+```bash
 sudo useradd -m -s /bin/bash github-runner
 sudo usermod -aG docker github-runner
-
-# Switch to runner user
-sudo su - github-runner
 ```
 
-### 3. Install GitHub Actions Runner
+### 2. Download Runner
 
 ```bash
+# Switch to runner user
+sudo -i -u github-runner
+
 # Create directory
 mkdir actions-runner && cd actions-runner
 
-# Download latest runner (check GitHub for current version)
+# Download latest runner
 curl -o actions-runner-linux-x64-2.311.0.tar.gz -L \
   https://github.com/actions/runner/releases/download/v2.311.0/actions-runner-linux-x64-2.311.0.tar.gz
 
 # Extract
-tar xzf ./actions-runner-linux-x64-2.311.0.tar.gz
-
-# Get registration token from GitHub repo settings
-# Settings > Actions > Runners > New self-hosted runner
-
-# Configure runner
-./config.sh --url https://github.com/YOUR_ORG/YOUR_REPO \
-  --token YOUR_REGISTRATION_TOKEN \
-  --labels self-hosted,Linux,X64,playwright \
-  --name grocyscan-playwright-runner
+tar xzf actions-runner-linux-x64-2.311.0.tar.gz
 ```
 
-### 4. Configure as Service
+### 3. Configure Runner
+
+Get the registration token from:
+`https://github.com/[owner]/[repo]/settings/actions/runners/new`
 
 ```bash
-# Install service
+./config.sh --url https://github.com/[owner]/grocyscan \
+  --token YOUR_TOKEN \
+  --name grocyscan-runner \
+  --labels self-hosted,linux,x64,playwright \
+  --work _work
+```
+
+### 4. Install as Service
+
+```bash
 sudo ./svc.sh install github-runner
-
-# Start service
 sudo ./svc.sh start
-
-# Check status
-sudo ./svc.sh status
 ```
 
-### 5. Pre-install Playwright Browsers
-
-```bash
-# As github-runner user
-cd /home/github-runner
-mkdir playwright-cache
-cd playwright-cache
-
-# Initialize npm project
-npm init -y
-npm install @playwright/test
-
-# Install browsers
-npx playwright install --with-deps
-
-# Verify installation
-npx playwright --version
-```
+---
 
 ## Runner Labels
 
-Configure these labels for your runner:
+Configure these labels for the runner:
 
-| Label | Purpose |
-|-------|---------|
+| Label | Description |
+|-------|-------------|
 | `self-hosted` | Required for self-hosted runners |
-| `Linux` | OS type |
-| `X64` | Architecture |
-| `playwright` | Custom label for Playwright jobs |
+| `linux` | Operating system |
+| `x64` | Architecture |
+| `playwright` | Has Playwright browsers installed |
+| `grocyscan` | Project-specific (optional) |
+
+---
+
+## Environment Setup
+
+### Environment Variables
+
+Create `/home/github-runner/.env`:
+
+```bash
+# Playwright browser path (optional, for cached browsers)
+PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+
+# Node.js memory limit
+NODE_OPTIONS=--max-old-space-size=4096
+
+# Python
+PYTHON_PATH=/usr/bin/python3.12
+```
+
+### Browser Cache
+
+To speed up Playwright browser installation:
+
+```bash
+# Create shared browser directory
+sudo mkdir -p /opt/playwright
+sudo chown github-runner:github-runner /opt/playwright
+
+# Pre-install browsers
+PLAYWRIGHT_BROWSERS_PATH=/opt/playwright npx playwright install --with-deps
+```
+
+---
 
 ## Workflow Configuration
 
-Update `.github/workflows/ui-tests.yml` to use self-hosted runner:
+### Using Self-Hosted Runner
+
+Update `.github/workflows/ui-tests.yml`:
 
 ```yaml
-name: UI Tests
+jobs:
+  ui:
+    name: Playwright UI
+    # Use self-hosted runner with playwright label
+    runs-on: [self-hosted, linux, x64, playwright]
+    
+    # Or fall back to GitHub-hosted if self-hosted unavailable
+    # runs-on: ${{ github.event.inputs.runner || 'ubuntu-latest' }}
+```
 
+### Conditional Runner Selection
+
+```yaml
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
       runner:
-        description: 'Runner type'
+        description: 'Runner to use'
         required: false
         default: 'ubuntu-latest'
         type: choice
@@ -166,199 +204,148 @@ on:
           - self-hosted
 
 jobs:
-  test:
+  ui:
     runs-on: ${{ github.event.inputs.runner || 'ubuntu-latest' }}
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      # Skip browser install on self-hosted (pre-installed)
-      - name: Install Playwright Browsers
-        if: ${{ !contains(runner.labels, 'self-hosted') }}
-        run: npx playwright install --with-deps
-        working-directory: frontend
 ```
 
-## Environment Variables
-
-Set these in runner environment or workflow:
-
-```bash
-# In runner's .bashrc or .profile
-export PLAYWRIGHT_BROWSERS_PATH=/home/github-runner/playwright-cache/node_modules/.cache/ms-playwright
-export CI=true
-```
-
-Or in workflow:
-
-```yaml
-env:
-  PLAYWRIGHT_BROWSERS_PATH: /home/github-runner/playwright-cache/node_modules/.cache/ms-playwright
-```
-
-## Browser Caching Strategy
-
-### Option 1: Pre-installed Browsers (Recommended)
-
-Browsers are installed once on the runner and reused:
-
-```bash
-# Update browsers periodically
-cd /home/github-runner/playwright-cache
-npm update @playwright/test
-npx playwright install --with-deps
-```
-
-### Option 2: Cached in Workflow
-
-Use GitHub Actions cache:
+### Browser Caching
 
 ```yaml
 - name: Cache Playwright browsers
   uses: actions/cache@v4
   with:
     path: ~/.cache/ms-playwright
-    key: playwright-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+    key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+    restore-keys: |
+      playwright-${{ runner.os }}-
+
+- name: Install Playwright browsers
+  if: steps.playwright-cache.outputs.cache-hit != 'true'
+  run: npx playwright install --with-deps
+  working-directory: frontend
 ```
+
+---
 
 ## Security Considerations
 
 ### Network Isolation
-- Use firewall rules to limit outbound access
-- Consider running in isolated network segment
 
-### Secrets Management
-- Don't store secrets in runner environment
-- Use GitHub Secrets exclusively
+1. **Firewall**: Only allow outbound connections to:
+   - `github.com` (runner communication)
+   - `registry.npmjs.org` (npm packages)
+   - `pypi.org` (Python packages)
+   - Internal services (Grocy, database)
 
-### Runner Updates
+2. **No public access**: Runner should not be accessible from internet
+
+### Runner Permissions
+
+1. **Least privilege**: Runner user should only have required permissions
+2. **Docker isolation**: Tests run in isolated containers
+3. **Secret management**: Use GitHub Secrets, not local files
+
+### Updates
+
 ```bash
-# Check for updates
+# Keep runner updated
 cd /home/github-runner/actions-runner
-./config.sh --check
-
-# Update runner
-sudo ./svc.sh stop
-# Download and extract new version
-sudo ./svc.sh start
+./svc.sh stop
+./config.sh remove --token YOUR_TOKEN
+# Download and configure new version
+./svc.sh install
+./svc.sh start
 ```
 
-### Repository Access
-- Configure runner for specific repository only
-- Use ephemeral runners for sensitive repos
+---
 
 ## Monitoring
 
-### Logs Location
-```bash
-# Runner logs
-/home/github-runner/actions-runner/_diag/
+### Runner Status
 
-# Service logs
-sudo journalctl -u actions.runner.YOUR_ORG-YOUR_REPO.grocyscan-playwright-runner
+```bash
+# Check service status
+sudo systemctl status actions.runner.*.service
+
+# View logs
+journalctl -u actions.runner.*.service -f
 ```
 
-### Health Check Script
+### Health Checks
+
+Create a simple health check script:
 
 ```bash
 #!/bin/bash
 # /home/github-runner/health-check.sh
 
 # Check runner service
-if systemctl is-active --quiet actions.runner.*; then
-  echo "Runner service: OK"
-else
-  echo "Runner service: FAILED"
-  exit 1
-fi
+systemctl is-active --quiet actions.runner.*.service || exit 1
 
-# Check browsers
-if /home/github-runner/playwright-cache/node_modules/.bin/playwright --version > /dev/null 2>&1; then
-  echo "Playwright: OK"
-else
-  echo "Playwright: FAILED"
-  exit 1
-fi
+# Check Docker
+docker info > /dev/null 2>&1 || exit 1
 
-# Check disk space
-DISK_USAGE=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
-if [ "$DISK_USAGE" -lt 90 ]; then
-  echo "Disk usage: OK ($DISK_USAGE%)"
-else
-  echo "Disk usage: WARNING ($DISK_USAGE%)"
-fi
+# Check Playwright browsers
+PLAYWRIGHT_BROWSERS_PATH=/opt/playwright npx playwright --version > /dev/null 2>&1 || exit 1
+
+echo "OK"
 ```
+
+---
 
 ## Troubleshooting
 
 ### Runner Not Picking Up Jobs
 
-1. Check runner is online in GitHub UI
-2. Verify labels match workflow
-3. Check service status: `sudo ./svc.sh status`
-4. Review logs: `journalctl -u actions.runner.*`
+1. Check runner status: `sudo systemctl status actions.runner.*.service`
+2. Check labels match workflow `runs-on`
+3. Check GitHub Actions settings for runner visibility
 
-### Browser Launch Failures
+### Playwright Timeouts
 
-```bash
-# Check dependencies
-ldd /path/to/chrome | grep "not found"
+1. Increase timeouts in `playwright.config.js`
+2. Check system resources: `htop`, `free -m`
+3. Check network connectivity
 
-# Install missing deps
-sudo apt install -y <missing-package>
-
-# Run Playwright debug
-DEBUG=pw:browser npx playwright test
-```
-
-### Permission Issues
+### Docker Permission Issues
 
 ```bash
-# Fix ownership
-sudo chown -R github-runner:github-runner /home/github-runner
+# Add runner to docker group
+sudo usermod -aG docker github-runner
 
-# Fix permissions
-chmod -R 755 /home/github-runner/actions-runner
+# Restart runner service
+sudo systemctl restart actions.runner.*.service
 ```
 
-### Out of Memory
+### Browser Installation Fails
 
 ```bash
-# Add swap space
-sudo fallocate -l 4G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
+# Install all dependencies
+sudo npx playwright install-deps
 
-# Make permanent
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+# Install browsers with dependencies
+npx playwright install --with-deps chromium
 ```
 
-## Maintenance Schedule
+---
 
-| Task | Frequency |
-|------|-----------|
-| Update runner | Monthly |
-| Update browsers | With Playwright updates |
-| Clear old artifacts | Weekly |
-| Review logs | Daily |
-| Security patches | As released |
+## Migration Checklist
 
-## Backup and Recovery
+When migrating from GitHub-hosted to self-hosted:
 
-### Backup Runner Config
-```bash
-# Backup
-tar czf runner-backup.tar.gz \
-  /home/github-runner/actions-runner/.credentials \
-  /home/github-runner/actions-runner/.runner
+- [ ] Set up runner machine with required specs
+- [ ] Install all required software
+- [ ] Configure runner with correct labels
+- [ ] Test runner with manual workflow dispatch
+- [ ] Update workflow to use self-hosted runner
+- [ ] Monitor first few CI runs
+- [ ] Set up alerting for runner failures
+- [ ] Document runner maintenance procedures
 
-# Restore
-tar xzf runner-backup.tar.gz -C /
-```
+---
 
-### Quick Recovery
-1. Provision new server
-2. Install dependencies
-3. Restore config backup
-4. Or re-register runner with new token
+## Resources
+
+- [GitHub Actions Self-Hosted Runners](https://docs.github.com/en/actions/hosting-your-own-runners)
+- [Playwright CI Guide](https://playwright.dev/docs/ci)
+- [Runner Security Hardening](https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#hardening-for-self-hosted-runners)

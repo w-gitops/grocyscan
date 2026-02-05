@@ -12,18 +12,18 @@
 
     <q-tab-panels v-model="tab" animated>
       <!-- Grocy -->
-      <q-tab-panel name="grocy">
+      <q-tab-panel name="grocy" data-testid="settings-panel-grocy">
         <q-card flat bordered>
           <q-card-section>
             <div class="text-subtitle1 q-mb-sm">Grocy Connection</div>
-            <q-input v-model="grocy.api_url" label="API URL" outlined dense class="q-mb-sm" />
-            <q-input v-model="grocy.api_key" label="API Key" outlined dense type="password" class="q-mb-sm" placeholder="Leave blank to keep existing" />
-            <q-input v-model="grocy.web_url" label="Web URL" outlined dense class="q-mb-md" />
+            <q-input v-model="grocy.api_url" label="API URL" outlined dense class="q-mb-sm" data-testid="grocy-api-url" />
+            <q-input v-model="grocy.api_key" label="API Key" outlined dense type="password" class="q-mb-sm" placeholder="Leave blank to keep existing" data-testid="grocy-api-key" />
+            <q-input v-model="grocy.web_url" label="Web URL" outlined dense class="q-mb-md" data-testid="grocy-web-url" />
             <div class="row q-gutter-sm">
-              <q-btn label="Test Connection" outline @click="testGrocy" :loading="testingGrocy" />
-              <q-btn label="Save" color="primary" @click="saveSection('grocy', grocy)" :loading="saving" />
+              <q-btn label="Test Connection" outline @click="testGrocy" :loading="testingGrocy" data-testid="grocy-test-connection" />
+              <q-btn label="Save" color="primary" @click="saveSection('grocy', grocy)" :loading="saving" data-testid="grocy-save-button" />
             </div>
-            <div v-if="grocyStatus" class="q-mt-sm" :class="grocyStatus.ok ? 'text-green' : 'text-red'">
+            <div v-if="grocyStatus" class="q-mt-sm" :class="grocyStatus.ok ? 'text-green' : 'text-red'" data-testid="grocy-test-status">
               {{ grocyStatus.message }}
             </div>
           </q-card-section>
@@ -31,21 +31,21 @@
       </q-tab-panel>
 
       <!-- LLM -->
-      <q-tab-panel name="llm">
+      <q-tab-panel name="llm" data-testid="settings-panel-llm">
         <q-card flat bordered>
           <q-card-section>
             <div class="text-subtitle1 q-mb-sm">LLM Configuration</div>
-            <q-select v-model="llm.provider_preset" :options="['openai', 'anthropic', 'ollama', 'generic']" label="Provider Preset" outlined dense class="q-mb-sm" />
-            <q-input v-model="llm.api_url" label="API URL" outlined dense class="q-mb-sm" />
-            <q-input v-model="llm.api_key" label="API Key" outlined dense type="password" class="q-mb-sm" placeholder="Leave blank to keep existing" />
-            <q-input v-model="llm.model" label="Model" outlined dense class="q-mb-md" />
-            <q-btn label="Save" color="primary" @click="saveSection('llm', llm)" :loading="saving" />
+            <q-select v-model="llm.provider_preset" :options="['openai', 'anthropic', 'ollama', 'generic']" label="Provider Preset" outlined dense class="q-mb-sm" data-testid="llm-provider-preset" />
+            <q-input v-model="llm.api_url" label="API URL" outlined dense class="q-mb-sm" data-testid="llm-api-url" />
+            <q-input v-model="llm.api_key" label="API Key" outlined dense type="password" class="q-mb-sm" placeholder="Leave blank to keep existing" data-testid="llm-api-key" />
+            <q-input v-model="llm.model" label="Model" outlined dense class="q-mb-md" data-testid="llm-model" />
+            <q-btn label="Save" color="primary" @click="saveSection('llm', llm)" :loading="saving" data-testid="llm-save-button" />
           </q-card-section>
         </q-card>
       </q-tab-panel>
 
       <!-- Lookup -->
-      <q-tab-panel name="lookup">
+      <q-tab-panel name="lookup" data-testid="settings-panel-lookup">
         <q-card flat bordered class="q-mb-md">
           <q-card-section>
             <div class="text-subtitle1 q-mb-sm">Lookup Strategy</div>
@@ -61,13 +61,14 @@
               emit-value
               map-options
               class="q-mb-sm"
+              data-testid="lookup-strategy"
             />
             <div class="text-caption text-grey">Provider priority (top = highest)</div>
           </q-card-section>
         </q-card>
 
         <!-- OpenFoodFacts -->
-        <q-card flat bordered class="q-mb-sm">
+        <q-card flat bordered class="q-mb-sm" data-testid="lookup-openfoodfacts-card">
           <q-card-section>
             <div class="row items-center justify-between">
               <div class="row items-center q-gutter-sm">
@@ -75,8 +76,8 @@
                 <q-badge color="green" label="Free" />
               </div>
               <div class="row items-center q-gutter-sm">
-                <q-btn flat dense size="sm" label="Test" @click="testProvider('openfoodfacts')" :loading="providerTesting.openfoodfacts" />
-                <q-toggle v-model="lookup.openfoodfacts_enabled" />
+                <q-btn flat dense size="sm" label="Test" @click="testProvider('openfoodfacts')" :loading="providerTesting.openfoodfacts" data-testid="lookup-test-openfoodfacts" />
+                <q-toggle v-model="lookup.openfoodfacts_enabled" data-testid="lookup-openfoodfacts-toggle" />
               </div>
             </div>
             <div class="text-caption text-grey q-mt-xs">Open database with nutrition info. No API key required.</div>
@@ -87,7 +88,7 @@
         </q-card>
 
         <!-- go-upc -->
-        <q-card flat bordered class="q-mb-sm">
+        <q-card flat bordered class="q-mb-sm" data-testid="lookup-goupc-card">
           <q-card-section>
             <div class="row items-center justify-between">
               <div class="row items-center q-gutter-sm">
@@ -96,8 +97,8 @@
                 <q-badge v-if="keysConfigured.goupc" color="green" label="Key Set" />
               </div>
               <div class="row items-center q-gutter-sm">
-                <q-btn flat dense size="sm" label="Test" @click="testProvider('goupc')" :loading="providerTesting.goupc" />
-                <q-toggle v-model="lookup.goupc_enabled" />
+                <q-btn flat dense size="sm" label="Test" @click="testProvider('goupc')" :loading="providerTesting.goupc" data-testid="lookup-test-goupc" />
+                <q-toggle v-model="lookup.goupc_enabled" data-testid="lookup-goupc-toggle" />
               </div>
             </div>
             <div class="text-caption text-grey q-mt-xs">Commercial UPC database with good coverage.</div>
@@ -109,6 +110,7 @@
               type="password"
               class="q-mt-sm"
               :placeholder="keysConfigured.goupc ? 'Leave blank to keep existing' : 'Enter go-upc.com API key'"
+              data-testid="lookup-goupc-apikey"
             />
             <div v-if="providerStatus.goupc" class="text-caption q-mt-xs" :class="providerStatus.goupc.ok ? 'text-green' : 'text-red'">
               {{ providerStatus.goupc.message }}
@@ -183,25 +185,25 @@
       </q-tab-panel>
 
       <!-- Scanning -->
-      <q-tab-panel name="scanning">
+      <q-tab-panel name="scanning" data-testid="settings-panel-scanning">
         <q-card flat bordered>
           <q-card-section>
             <div class="text-subtitle1 q-mb-sm">Scanning Behavior</div>
-            <q-toggle v-model="scanning.auto_add_enabled" label="Auto-add products" class="q-mb-sm" />
-            <q-input v-model="scanning.fuzzy_match_threshold" label="Fuzzy Match Threshold" outlined dense type="number" step="0.1" class="q-mb-sm" />
-            <q-input v-model="scanning.default_quantity_unit" label="Default Quantity Unit" outlined dense class="q-mb-md" />
-            <q-btn label="Save" color="primary" @click="saveSection('scanning', scanning)" :loading="saving" />
+            <q-toggle v-model="scanning.auto_add_enabled" label="Auto-add products" class="q-mb-sm" data-testid="scanning-auto-add" />
+            <q-input v-model="scanning.fuzzy_match_threshold" label="Fuzzy Match Threshold" outlined dense type="number" step="0.1" class="q-mb-sm" data-testid="scanning-fuzzy-threshold" />
+            <q-input v-model="scanning.default_quantity_unit" label="Default Quantity Unit" outlined dense class="q-mb-md" data-testid="scanning-default-quantity-unit" />
+            <q-btn label="Save" color="primary" @click="saveSection('scanning', scanning)" :loading="saving" data-testid="scanning-save-button" />
           </q-card-section>
         </q-card>
       </q-tab-panel>
 
       <!-- UI -->
-      <q-tab-panel name="ui">
+      <q-tab-panel name="ui" data-testid="settings-panel-ui">
         <q-card flat bordered>
           <q-card-section>
             <div class="text-subtitle1 q-mb-sm">UI Settings</div>
-            <q-toggle v-model="uiSettings.kiosk_mode_enabled" label="Kiosk Mode" class="q-mb-md" />
-            <q-btn label="Save" color="primary" @click="saveSection('ui', uiSettings)" :loading="saving" />
+            <q-toggle v-model="uiSettings.kiosk_mode_enabled" label="Kiosk Mode" class="q-mb-md" data-testid="scanning-kiosk-mode" />
+            <q-btn label="Save" color="primary" @click="saveSection('ui', uiSettings)" :loading="saving" data-testid="ui-save-button" />
           </q-card-section>
         </q-card>
       </q-tab-panel>
