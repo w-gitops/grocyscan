@@ -64,7 +64,11 @@ test.describe('Navigation', () => {
     test('can navigate back to Scan', async ({ page }) => {
       const nav = new NavigationComponent(page)
       await nav.navigateTo('settings')
-      await nav.navigateTo('scan')
+      await expect(page).toHaveURL(/\/settings/)
+      
+      // Try clicking Scan nav button
+      const scanBtn = page.getByRole('button', { name: 'Scan' }).or(page.locator('[data-testid="nav-scan"]'))
+      await scanBtn.click()
       await expect(page).toHaveURL(/\/scan/)
     })
   })

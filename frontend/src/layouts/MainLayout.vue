@@ -3,7 +3,9 @@
     <q-header elevated data-testid="app-header">
       <q-toolbar>
         <q-btn flat dense round icon="menu" class="lt-md" @click="drawer = !drawer" data-testid="mobile-menu-button" />
-        <q-toolbar-title data-testid="app-logo">{{ configStore.appTitle }}</q-toolbar-title>
+        <q-toolbar-title data-testid="app-logo">
+          {{ configStore.appTitle }}{{ configStore.version ? ` · ${configStore.version}` : '' }}
+        </q-toolbar-title>
         <!-- Desktop nav -->
         <q-btn flat label="Scan" to="/scan" class="gt-sm" data-testid="nav-scan" />
         <q-btn flat label="Products" to="/products" class="gt-sm" data-testid="nav-products" />
