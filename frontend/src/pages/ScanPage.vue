@@ -476,7 +476,8 @@ async function onLookup() {
     }
   } catch (e) {
     addRecentScan(code, null, false)
-    $q.notify({ type: 'negative', message: e.message || 'Lookup failed' })
+    const msg = (e && e.message && String(e.message).trim()) || 'Lookup failed'
+    $q.notify({ type: 'negative', message: msg, timeout: 8000 })
   }
 }
 

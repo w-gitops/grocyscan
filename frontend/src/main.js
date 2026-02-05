@@ -14,7 +14,10 @@ async function bootstrap() {
   const app = createApp(App)
   const pinia = createPinia()
   app.use(pinia)
-  app.use(Quasar, { plugins: { Notify, Dialog } })
+  app.use(Quasar, {
+    plugins: { Notify, Dialog },
+    config: { notify: { timeout: 8000 } },
+  })
 
   const configStore = useConfigStore(pinia)
   await configStore.load()

@@ -19,10 +19,10 @@ test.describe('Logs Page', () => {
 
   test.describe('Page Elements', () => {
     test('displays page title', async ({ page }) => {
-      // Check for Logs heading or page content
-      const hasHeading = await page.getByRole('heading', { name: 'Logs' }).isVisible().catch(() => false)
-      const hasText = await page.getByText('Logs').first().isVisible().catch(() => false)
-      expect(hasHeading || hasText).toBe(true)
+      const byTestId = page.getByTestId('logs-page-title')
+      const byText = page.locator('.logs-page').getByText('Logs').first()
+      const visible = await byTestId.isVisible().catch(() => false) || await byText.isVisible().catch(() => false)
+      expect(visible).toBe(true)
     })
 
     test('displays log level filter', async ({ page }) => {

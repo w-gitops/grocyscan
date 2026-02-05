@@ -363,8 +363,9 @@ async function loadProducts() {
   loading.value = true
   try {
     products.value = await getMeProducts(fp, search.value)
-  } catch {
+  } catch (e) {
     products.value = []
+    $q.notify({ type: 'negative', message: e.message || 'Failed to load products' })
   } finally {
     loading.value = false
   }
