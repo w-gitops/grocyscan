@@ -2,13 +2,49 @@
 
 import logging
 import sys
+from collections import deque
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 import structlog
 from opentelemetry import trace
 
 from app.config import settings
+
+LOG_BUFFER_MAX_LINES = 500
+_log_buffer: deque[str] = deque(maxlen=LOG_BUFFER_MAX_LINES)
+_log_buffer_lock = Lock()
+
+
+class LogBufferHandler(logging.Handler):
+    """Keep a small in-memory buffer of recent log lines."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            message = self.format(record)
+        except Exception:  # pragma: no cover - defensive formatting
+            message = record.getMessage()
+        if not message:
+            return
+        lines = message.splitlines() or [message]
+        with _log_buffer_lock:
+            _log_buffer.extend(lines)
+
+
+def get_log_buffer_lines(limit: int | None = None) -> list[str]:
+    """Return recent buffered log lines."""
+    with _log_buffer_lock:
+        lines = list(_log_buffer)
+    if limit is None or limit >= len(lines):
+        return lines
+    return lines[-limit:]
+
+
+def clear_log_buffer() -> None:
+    """Clear in-memory log buffer."""
+    with _log_buffer_lock:
+        _log_buffer.clear()
 
 
 def add_otel_context(
@@ -99,6 +135,12 @@ def configure_logging() -> None:
         )
 
     root_logger.addHandler(console_handler)
+
+    # Always keep an in-memory buffer for the Logs UI
+    buffer_handler = LogBufferHandler()
+    buffer_handler.setLevel(log_level)
+    buffer_handler.setFormatter(logging.Formatter("%(message)s"))
+    root_logger.addHandler(buffer_handler)
 
     # Add file handler if configured
     if settings.log_file and settings.log_file.strip():

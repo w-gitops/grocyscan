@@ -6,8 +6,10 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from app.config import settings
+from app.core.logging import clear_log_buffer, get_log_buffer_lines, get_logger
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 MAX_LINES = 500
 
@@ -31,22 +33,32 @@ async def get_logs() -> dict:
         dict: {"lines": list[str], "message": str | None}
     """
     if not settings.log_file or not settings.log_file.strip():
+        buffered = [
+            _strip_ansi(line.rstrip("\n\r"))
+            for line in get_log_buffer_lines(MAX_LINES)
+        ]
         return {
-            "lines": [],
+            "lines": buffered,
             "message": (
-                "Log file not configured. Set LOG_FILE in your environment (e.g. "
-                "LOG_FILE=/opt/grocyscan/logs/app.log) and restart the service. "
-                "Then ensure the app can write to that path. "
-                "Alternatively, view logs with: journalctl -u grocyscan -n 200 --no-pager"
+                f"Log file not configured. Showing in-memory logs (last {MAX_LINES} lines). "
+                "Set LOG_FILE in your environment (e.g. LOG_FILE=/opt/grocyscan/logs/app.log) "
+                "and restart the service to persist logs."
             ),
             "log_file": None,
         }
 
     path = Path(settings.log_file)
     if not path.exists():
+        buffered = [
+            _strip_ansi(line.rstrip("\n\r"))
+            for line in get_log_buffer_lines(MAX_LINES)
+        ]
         return {
-            "lines": [],
-            "message": f"Log file not found: {path}. Create the file or set LOG_FILE to a path the app can write to.",
+            "lines": buffered,
+            "message": (
+                f"Log file not found: {path}. Showing in-memory logs instead. "
+                "Create the file or set LOG_FILE to a path the app can write to."
+            ),
             "log_file": settings.log_file,
         }
 
@@ -54,9 +66,13 @@ async def get_logs() -> dict:
         with open(path, encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
     except OSError as e:
+        buffered = [
+            _strip_ansi(line.rstrip("\n\r"))
+            for line in get_log_buffer_lines(MAX_LINES)
+        ]
         return {
-            "lines": [],
-            "message": f"Cannot read log file: {e}",
+            "lines": buffered,
+            "message": f"Cannot read log file: {e}. Showing in-memory logs instead.",
             "log_file": settings.log_file,
         }
 
@@ -71,10 +87,11 @@ async def get_logs() -> dict:
 async def clear_logs() -> dict:
     """Truncate the configured log file. Requires LOG_FILE to be set and writable."""
     if not settings.log_file or not settings.log_file.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="Log file not configured. Set LOG_FILE to clear logs from the UI.",
-        )
+        clear_log_buffer()
+        return {
+            "message": "In-memory logs cleared. Set LOG_FILE to clear persisted logs.",
+            "log_file": None,
+        }
     path = Path(settings.log_file)
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Log file not found: {path}")
@@ -85,4 +102,12 @@ async def clear_logs() -> dict:
             status_code=403,
             detail=f"Cannot write to log file: {e}",
         ) from e
+    clear_log_buffer()
     return {"message": "Log file cleared.", "log_file": settings.log_file}
+
+
+@router.post("/test")
+async def write_test_log() -> dict:
+    """Write a test log entry for the Logs UI."""
+    logger.info("Logs UI test message")
+    return {"message": "Test log entry written."}
