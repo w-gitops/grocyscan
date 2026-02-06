@@ -340,6 +340,12 @@ export async function clearLogs() {
   return res.json()
 }
 
+export async function writeTestLog() {
+  const res = await apiFetch('/api/logs/test', { method: 'POST' })
+  if (!res.ok) throw apiErrorFromResponse(res, await res.text())
+  return res.json()
+}
+
 // Settings (session only)
 export async function getSettings() {
   const res = await apiFetch('/api/settings')

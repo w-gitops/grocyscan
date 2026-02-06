@@ -63,6 +63,17 @@
           class="q-ml-xs"
           @click="orderNewestFirst = !orderNewestFirst"
         />
+        <q-btn
+          icon="science"
+          label="Test"
+          outline
+          size="sm"
+          dense
+          no-caps
+          class="q-ml-xs"
+          :loading="testing"
+          @click="sendTestLog"
+        />
         <q-space />
         <q-btn flat round dense icon="file_download" @click="downloadLogs" :disable="!displayedLines.length">
           <q-tooltip>Download</q-tooltip>
@@ -132,7 +143,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { getLogs, clearLogs } from '../services/api'
+import { getLogs, clearLogs, writeTestLog } from '../services/api'
 import { useQuasar } from 'quasar'
 
 const $q = useQuasar()
@@ -140,6 +151,7 @@ const rawLines = ref([])
 const message = ref('')
 const logFilePath = ref(null)
 const loading = ref(false)
+const testing = ref(false)
 const logScrollRef = ref(null)
 const atBottom = ref(true)
 const tailing = ref(false)
@@ -273,6 +285,19 @@ async function loadLogs() {
     loading.value = false
   }
   if (tailing.value) nextTick(scrollToBottom)
+}
+
+async function sendTestLog() {
+  testing.value = true
+  try {
+    const data = await writeTestLog()
+    $q.notify({ type: 'positive', message: data.message || 'Test log entry written' })
+    await loadLogs()
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e.message || 'Failed to write test log' })
+  } finally {
+    testing.value = false
+  }
 }
 
 watch(tailing, (on) => {
