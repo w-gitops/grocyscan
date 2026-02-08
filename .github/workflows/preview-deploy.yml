@@ -1,12 +1,16 @@
 name: Preview Deploy
 
 # Deploy a branch to a preview environment on the self-hosted Proxmox runner.
-# Each PR gets its own isolated Docker stack with unique ports.
+# Each PR gets its own isolated Docker stack with unique ports and an HTTPS
+# proxy via Nginx Proxy Manager.
+#
+# Branching model: feature branches → dev → main
+# Previews are created for PRs targeting dev (feature work) or main (release).
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches: [main, dev]
+    branches: [dev, main]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -15,7 +19,6 @@ on:
         type: string
 
 concurrency:
-  # Only one preview deploy per PR at a time
   group: preview-${{ github.event.pull_request.number || github.event.inputs.pr_number || github.ref_name }}
   cancel-in-progress: true
 
@@ -27,9 +30,10 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  PREVIEW_DOMAIN_SUFFIX: preview.grocyscan.ssiops.com
 
 jobs:
-  # First, build and push the Docker image for this branch
+  # Build and push the Docker image for this branch
   build-image:
     name: Build Preview Image
     if: github.event.pull_request.draft == false
@@ -51,12 +55,10 @@ jobs:
           if [[ -n "$PR_NUM" ]]; then
             TAG="pr-${PR_NUM}"
           else
-            # Sanitize branch name for Docker tag
             TAG=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9._-]/-/g' | head -c 128)
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "full_image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}" >> "$GITHUB_OUTPUT"
-          echo "Image tag: ${TAG}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -79,7 +81,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Then, deploy the image on the self-hosted runner
+  # Deploy the image on the self-hosted runner + create NPM proxy
   deploy-preview:
     name: Deploy Preview
     needs: build-image
@@ -87,21 +89,24 @@ jobs:
     runs-on: [self-hosted, linux, proxmox]
     env:
       PREVIEW_ID: pr-${{ github.event.pull_request.number || github.event.inputs.pr_number }}
-      PREVIEW_PORT: ""  # Computed in step
-      POSTGRES_PORT: "" # Computed in step
     steps:
-      - name: Checkout (for compose file)
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Compute ports
-        id: ports
+      - name: Compute ports and domain
+        id: env
         run: |
           PR_NUM="${{ github.event.pull_request.number || github.event.inputs.pr_number || '99' }}"
           API_PORT=$((10000 + PR_NUM))
           PG_PORT=$((15000 + PR_NUM))
+          DOMAIN="pr-${PR_NUM}.${{ env.PREVIEW_DOMAIN_SUFFIX }}"
+          RUNNER_IP=$(hostname -I | awk '{print $1}')
+
           echo "api_port=${API_PORT}" >> "$GITHUB_OUTPUT"
           echo "pg_port=${PG_PORT}" >> "$GITHUB_OUTPUT"
-          echo "Preview ports: API=${API_PORT}, PG=${PG_PORT}"
+          echo "domain=${DOMAIN}" >> "$GITHUB_OUTPUT"
+          echo "runner_ip=${RUNNER_IP}" >> "$GITHUB_OUTPUT"
+          echo "Preview: ${DOMAIN} → ${RUNNER_IP}:${API_PORT}"
 
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
@@ -112,7 +117,6 @@ jobs:
       - name: Generate auth password hash
         id: auth
         run: |
-          # Generate a hash for the default preview password "test"
           HASH=$(docker run --rm "${{ needs.build-image.outputs.full_image }}" \
             python -c "from app.services.auth import hash_password; print(hash_password('test'))" 2>/dev/null || echo "")
           echo "hash=${HASH}" >> "$GITHUB_OUTPUT"
@@ -120,8 +124,8 @@ jobs:
       - name: Deploy preview stack
         env:
           GROCYSCAN_IMAGE: ${{ needs.build-image.outputs.full_image }}
-          PREVIEW_PORT: ${{ steps.ports.outputs.api_port }}
-          POSTGRES_PORT: ${{ steps.ports.outputs.pg_port }}
+          PREVIEW_PORT: ${{ steps.env.outputs.api_port }}
+          POSTGRES_PORT: ${{ steps.env.outputs.pg_port }}
           AUTH_PASSWORD_HASH: ${{ steps.auth.outputs.hash }}
         run: |
           # Stop existing preview if running
@@ -136,8 +140,6 @@ jobs:
             -p "grocyscan-${PREVIEW_ID}" \
             up -d --wait --timeout 120
 
-          echo "Preview deployed: grocyscan-${PREVIEW_ID}"
-
       - name: Run migrations
         run: |
           docker exec "grocyscan-${PREVIEW_ID}" \
@@ -146,29 +148,51 @@ jobs:
       - name: Health check
         id: health
         run: |
-          PORT="${{ steps.ports.outputs.api_port }}"
+          PORT="${{ steps.env.outputs.api_port }}"
           for i in $(seq 1 30); do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${PORT}/health" 2>/dev/null || echo "000")
             if [[ "$STATUS" == "200" ]]; then
-              echo "Health check passed on port ${PORT}"
+              echo "Health check passed"
               echo "healthy=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            echo "Waiting for health... (attempt ${i}, status=${STATUS})"
             sleep 2
           done
           echo "healthy=false" >> "$GITHUB_OUTPUT"
-          echo "WARNING: Health check did not pass, but preview may still be starting"
 
-      - name: Get preview URL
+      # ---- NPM Proxy (HTTPS) ----
+      - name: Create HTTPS proxy via Nginx Proxy Manager
+        id: proxy
+        if: env.NPM_API_URL != ''
+        env:
+          NPM_API_URL: ${{ secrets.NPM_API_URL }}
+          NPM_API_EMAIL: ${{ secrets.NPM_API_EMAIL }}
+          NPM_API_PASSWORD: ${{ secrets.NPM_API_PASSWORD }}
+          NPM_CERT_ID: ${{ secrets.NPM_CERT_ID }}
+        run: |
+          DOMAIN="${{ steps.env.outputs.domain }}"
+          FORWARD_HOST="${{ steps.env.outputs.runner_ip }}"
+          FORWARD_PORT="${{ steps.env.outputs.api_port }}"
+
+          PROXY_ID=$(bash scripts/npm-proxy.sh create "$DOMAIN" "$FORWARD_HOST" "$FORWARD_PORT" 2>/dev/null || echo "")
+
+          if [[ -n "$PROXY_ID" ]]; then
+            echo "proxy_id=${PROXY_ID}" >> "$GITHUB_OUTPUT"
+            echo "https_url=https://${DOMAIN}" >> "$GITHUB_OUTPUT"
+            echo "has_https=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_https=false" >> "$GITHUB_OUTPUT"
+            echo "WARNING: NPM proxy creation failed — preview available via HTTP only"
+          fi
+
+      - name: Determine preview URL
         id: url
         run: |
-          # Get the runner's IP address (first non-loopback IPv4)
-          RUNNER_IP=$(hostname -I | awk '{print $1}')
-          PORT="${{ steps.ports.outputs.api_port }}"
-          PREVIEW_URL="http://${RUNNER_IP}:${PORT}"
-          echo "url=${PREVIEW_URL}" >> "$GITHUB_OUTPUT"
-          echo "Preview URL: ${PREVIEW_URL}"
+          if [[ "${{ steps.proxy.outputs.has_https }}" == "true" ]]; then
+            echo "url=${{ steps.proxy.outputs.https_url }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "url=http://${{ steps.env.outputs.runner_ip }}:${{ steps.env.outputs.api_port }}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Comment on PR
         if: github.event.pull_request.number
@@ -177,11 +201,14 @@ jobs:
           script: |
             const previewUrl = '${{ steps.url.outputs.url }}';
             const healthy = '${{ steps.health.outputs.healthy }}' === 'true';
+            const hasHttps = '${{ steps.proxy.outputs.has_https }}' === 'true';
             const imageTag = '${{ needs.build-image.outputs.image_tag }}';
             const prNumber = context.payload.pull_request.number;
             const sha = context.sha.substring(0, 8);
+            const domain = '${{ steps.env.outputs.domain }}';
 
             const status = healthy ? '🟢 Healthy' : '🟡 Starting...';
+            const proto = hasHttps ? '🔒 HTTPS' : '🔓 HTTP';
 
             const body = [
               `## 🚀 Preview Deployment`,
@@ -190,6 +217,7 @@ jobs:
               `|---|---|`,
               `| **URL** | [${previewUrl}](${previewUrl}) |`,
               `| **Status** | ${status} |`,
+              `| **Protocol** | ${proto} |`,
               `| **Image** | \`${imageTag}\` |`,
               `| **Commit** | \`${sha}\` |`,
               `| **Credentials** | \`admin\` / \`test\` |`,
@@ -197,7 +225,6 @@ jobs:
               `> Preview environments are ephemeral and will be destroyed when this PR is closed.`,
             ].join('\n');
 
-            // Find and update existing preview comment, or create new one
             const comments = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,

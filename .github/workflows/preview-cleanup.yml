@@ -1,11 +1,12 @@
 name: Preview Cleanup
 
 # Tear down preview environments when a PR is closed (merged or not).
+# Also removes the Nginx Proxy Manager HTTPS proxy entry.
 
 on:
   pull_request:
     types: [closed]
-    branches: [main, dev]
+    branches: [dev, main]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -21,41 +22,53 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  PREVIEW_DOMAIN_SUFFIX: preview.grocyscan.ssiops.com
 
 jobs:
   cleanup:
     name: Cleanup Preview
     runs-on: [self-hosted, linux, proxmox]
     steps:
-      - name: Checkout (for compose file)
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Compute preview ID
+      - name: Compute preview ID and domain
         id: preview
         run: |
           PR_NUM="${{ github.event.pull_request.number || github.event.inputs.pr_number }}"
           PREVIEW_ID="pr-${PR_NUM}"
+          DOMAIN="pr-${PR_NUM}.${{ env.PREVIEW_DOMAIN_SUFFIX }}"
           echo "id=${PREVIEW_ID}" >> "$GITHUB_OUTPUT"
           echo "pr_num=${PR_NUM}" >> "$GITHUB_OUTPUT"
-          echo "Cleaning up preview: ${PREVIEW_ID}"
+          echo "domain=${DOMAIN}" >> "$GITHUB_OUTPUT"
+          echo "Cleaning up: ${PREVIEW_ID} (${DOMAIN})"
 
+      # ---- Remove NPM proxy ----
+      - name: Delete HTTPS proxy from Nginx Proxy Manager
+        if: env.NPM_API_URL != ''
+        env:
+          NPM_API_URL: ${{ secrets.NPM_API_URL }}
+          NPM_API_EMAIL: ${{ secrets.NPM_API_EMAIL }}
+          NPM_API_PASSWORD: ${{ secrets.NPM_API_PASSWORD }}
+        run: |
+          bash scripts/npm-proxy.sh delete "${{ steps.preview.outputs.domain }}" || true
+
+      # ---- Stop Docker stack ----
       - name: Stop preview stack
         run: |
           PREVIEW_ID="${{ steps.preview.outputs.id }}"
 
-          # Try docker compose down first
           if docker compose -p "grocyscan-${PREVIEW_ID}" ps --quiet 2>/dev/null | head -1; then
             echo "Stopping stack grocyscan-${PREVIEW_ID}..."
             docker compose \
               -f docker/docker-compose.preview.yml \
               -p "grocyscan-${PREVIEW_ID}" \
               down --remove-orphans --volumes --timeout 30
-            echo "Stack stopped and removed."
           else
             echo "No running stack found for grocyscan-${PREVIEW_ID}"
           fi
 
-          # Clean up any orphaned containers with matching names
+          # Clean up orphaned containers
           for container in $(docker ps -a --filter "name=grocyscan-${PREVIEW_ID}" --format '{{.Names}}' 2>/dev/null); do
             echo "Removing orphaned container: ${container}"
             docker rm -f "${container}" 2>/dev/null || true
@@ -65,12 +78,10 @@ jobs:
         run: |
           PR_NUM="${{ steps.preview.outputs.pr_num }}"
           IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${PR_NUM}"
-          docker rmi "${IMAGE}" 2>/dev/null || echo "Image ${IMAGE} not found locally (already removed or never pulled)"
+          docker rmi "${IMAGE}" 2>/dev/null || echo "Image not found locally"
 
       - name: Prune unused resources
-        run: |
-          # Remove dangling images and stopped containers to free disk
-          docker system prune -f --filter "until=24h" 2>/dev/null || true
+        run: docker system prune -f --filter "until=24h" 2>/dev/null || true
 
       - name: Comment on PR
         if: github.event.pull_request.number
@@ -89,10 +100,10 @@ jobs:
               `| | |`,
               `|---|---|`,
               `| **PR Status** | ${status} |`,
-              `| **Cleanup** | Complete |`,
+              `| **Proxy** | Removed |`,
+              `| **Containers** | Removed |`,
             ].join('\n');
 
-            // Find and update existing preview comment
             const comments = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
