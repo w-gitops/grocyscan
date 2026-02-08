@@ -2,50 +2,42 @@
 
 ## Quickstart — Bootstrap from Zero
 
-Everything below assumes you have a Proxmox 9 VE host and a GitHub repo.
-Run these commands to go from nothing to working CI/CD runners.
+One command on the Proxmox host sets up both runners end-to-end:
 
 ```bash
-# ─── ON YOUR PROXMOX HOST ───────────────────────────────────
-# 1. Download the LXC provisioner
-curl -sLO https://raw.githubusercontent.com/w-gitops/grocyscan/main/infrastructure/create-lxc.sh
-chmod +x create-lxc.sh
-
-# 2. Create two LXCs (interactive — prompts for everything):
-bash create-lxc.sh                   # or pass flags: --profile ci --ctid 11250 --ip ...
-
-# 3. Or create both non-interactively:
-bash create-lxc.sh --profile ci     --ctid 11250 --ip 192.168.200.50/24 --gw 192.168.200.2
-bash create-lxc.sh --profile deploy --ctid 11251 --ip 192.168.200.51/24 --gw 192.168.200.2
-
-# ─── GET A RUNNER TOKEN (from any machine with gh CLI) ──────
-gh api -X POST repos/w-gitops/grocyscan/actions/runners/registration-token --jq .token
-
-# ─── INSIDE EACH LXC (SSH in, then run) ─────────────────────
-# Interactive mode (prompts for token, profile, name):
-curl -sLO https://raw.githubusercontent.com/w-gitops/grocyscan/main/infrastructure/setup-runner.sh
-bash setup-runner.sh
-
-# Or non-interactive:
-bash setup-runner.sh \
-  --github-url https://github.com/w-gitops/grocyscan \
-  --runner-token <TOKEN> \
-  --runner-name grocyscan-ci \
-  --profile ci
-
-# ─── GITHUB SECRETS (repo Settings > Secrets > Actions) ─────
-# DEPLOY_SSH_KEY      — ed25519 private key for production server
-# DEPLOY_HOST         — 192.168.200.37
-# NPM_API_URL         — http://<npm-host>:81
-# NPM_API_EMAIL       — admin email for NPM
-# NPM_API_PASSWORD    — admin password for NPM
-# NPM_CERT_ID         — wildcard cert ID in NPM (optional)
-
-# ─── CREATE DEV BRANCH (once, from main) ────────────────────
-git checkout main && git checkout -b dev && git push -u origin dev
+curl -sLO https://raw.githubusercontent.com/w-gitops/grocyscan/main/infrastructure/bootstrap.sh
+bash bootstrap.sh
 ```
 
-That's it. Push a PR targeting `dev` and the full pipeline runs.
+This interactive script:
+1. Installs `gh` CLI on the Proxmox host (if missing)
+2. Asks for GitHub PAT, network config, CTIDs, runner names
+3. Downloads the Debian template
+4. Creates two LXCs (CI + Deploy) with correct sizing and features
+5. Installs the GitHub Actions runner inside each via `pct exec`
+6. Logs the deploy runner into GHCR
+7. Verifies both runners appear in GitHub
+
+After it finishes, you just need to:
+- Add GitHub Secrets (DEPLOY_SSH_KEY, NPM_API_URL, etc.)
+- Add wildcard DNS records
+- Create the `dev` branch and push a PR
+
+### Individual scripts (advanced / re-run)
+
+If you prefer step-by-step, or need to re-run parts individually:
+
+```bash
+# Create one LXC at a time (interactive or with flags):
+curl -sLO https://raw.githubusercontent.com/w-gitops/grocyscan/main/infrastructure/create-lxc.sh
+bash create-lxc.sh                   # interactive
+bash create-lxc.sh --profile ci --ctid 11250 --ip 192.168.200.50/24 --gw 192.168.200.2
+
+# Install runner inside an LXC (interactive or with flags):
+curl -sLO https://raw.githubusercontent.com/w-gitops/grocyscan/main/infrastructure/setup-runner.sh
+bash setup-runner.sh                 # interactive
+bash setup-runner.sh --github-url https://github.com/w-gitops/grocyscan --runner-token <TOKEN> --profile ci
+```
 
 ---
 
