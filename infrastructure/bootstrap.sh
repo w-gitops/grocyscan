@@ -9,7 +9,9 @@
 #   3. Creates two Debian 13 LXCs (CI + Deploy)
 #   4. Installs GitHub Actions runner inside each via pct exec
 #   5. Logs the deploy runner into GHCR
-#   6. Prints summary with all URLs and next steps
+#   6. (Optional) Installs Portainer Edge Agents in both LXCs
+#   7. (Optional) Configures NPM HTTPS proxies for staging
+#   8. Prints summary with all URLs and next steps
 #
 # Usage:
 #   curl -sLO https://raw.githubusercontent.com/w-gitops/grocyscan/main/infrastructure/bootstrap.sh
@@ -81,6 +83,8 @@ echo "  as GitHub Actions self-hosted runners:"
 echo ""
 echo -e "    ${GREEN}1.${NC} CI runner      — pytest + Playwright (bare install)"
 echo -e "    ${GREEN}2.${NC} Deploy runner  — Docker previews + staging"
+echo ""
+echo "  Optional: Portainer agents + NPM HTTPS proxy setup."
 echo ""
 echo "  Everything runs from this terminal. No SSH keys or"
 echo "  Ansible needed — uses pct exec to configure LXCs."
@@ -175,6 +179,59 @@ DEPLOY_NAME=""
 prompt CI_NAME     "CI runner name" "grocyscan-ci"
 prompt DEPLOY_NAME "Deploy runner name" "grocyscan-deploy"
 
+# ============================================================
+divider "Step 6: Portainer Agent"
+# ============================================================
+
+PORTAINER_ENABLED=""
+PORTAINER_URL=""
+PORTAINER_EDGE_ID=""
+PORTAINER_EDGE_KEY=""
+
+echo "  If you have a Portainer instance, the bootstrap can install"
+echo "  Portainer Edge Agents in both LXCs for monitoring."
+echo ""
+read -rp "$(echo -e "  ${CYAN}Install Portainer agents? [y/N]${NC}: ")" portainer_choice
+if [[ "${portainer_choice,,}" == "y" ]]; then
+  PORTAINER_ENABLED="true"
+  echo ""
+  echo -e "  ${DIM}Get the Edge key from: Portainer > Environments > Add > Edge Agent${NC}"
+  echo ""
+  prompt PORTAINER_URL      "Portainer server URL (e.g. https://portainer.local:9443)" ""
+  prompt PORTAINER_EDGE_KEY "Edge key" ""
+else
+  PORTAINER_ENABLED="false"
+fi
+
+# ============================================================
+divider "Step 7: Nginx Proxy Manager"
+# ============================================================
+
+NPM_ENABLED=""
+NPM_API_URL=""
+NPM_API_EMAIL=""
+NPM_API_PASSWORD=""
+NPM_CERT_ID=""
+
+echo "  If you have Nginx Proxy Manager, the bootstrap can configure"
+echo "  HTTPS proxy entries for the staging environment."
+echo ""
+read -rp "$(echo -e "  ${CYAN}Configure NPM proxies? [y/N]${NC}: ")" npm_choice
+if [[ "${npm_choice,,}" == "y" ]]; then
+  NPM_ENABLED="true"
+  echo ""
+  prompt       NPM_API_URL      "NPM API URL (e.g. http://192.168.200.10:81)" ""
+  prompt       NPM_API_EMAIL    "NPM admin email" ""
+  prompt_secret NPM_API_PASSWORD "NPM admin password"
+  echo ""
+  echo -e "  ${DIM}If you have a wildcard cert for *.preview.grocyscan.ssiops.com,${NC}"
+  echo -e "  ${DIM}enter its ID from NPM > SSL Certificates. Leave blank to skip.${NC}"
+  echo ""
+  prompt NPM_CERT_ID "Wildcard certificate ID (blank to skip)" "0"
+else
+  NPM_ENABLED="false"
+fi
+
 # ---- Generate passwords ----
 CI_PASSWORD=$(openssl rand -base64 16 2>/dev/null || head -c 16 /dev/urandom | base64)
 DEPLOY_PASSWORD=$(openssl rand -base64 16 2>/dev/null || head -c 16 /dev/urandom | base64)
@@ -203,6 +260,10 @@ echo ""
 echo -e "  ${BOLD}GitHub:${NC}"
 echo "    Repo:     ${GITHUB_REPO}"
 echo "    GHCR:     ${GHCR_USER}"
+echo ""
+echo -e "  ${BOLD}Extras:${NC}"
+echo "    Portainer: ${PORTAINER_ENABLED}"
+echo "    NPM:       ${NPM_ENABLED}"
 echo ""
 
 read -rp "$(echo -e "${YELLOW}Create both LXCs and configure runners? [Y/n]${NC}: ")" confirm
@@ -373,7 +434,12 @@ install_runner() {
 divider "Creating CI Runner LXC (CT ${CI_CTID})"
 # ============================================================
 
-create_lxc "${CI_CTID}" "${CI_NAME}" "${CI_IP}" 2 4096 30 "nesting=1" "${CI_PASSWORD}"
+# CI LXC gets nesting+keyctl too (needed if Portainer agent uses Docker)
+CI_FEATURES="nesting=1"
+if [[ "$PORTAINER_ENABLED" == "true" ]]; then
+  CI_FEATURES="nesting=1,keyctl=1"
+fi
+create_lxc "${CI_CTID}" "${CI_NAME}" "${CI_IP}" 2 4096 30 "${CI_FEATURES}" "${CI_PASSWORD}"
 install_runner "${CI_CTID}" "ci" "${CI_NAME}" "${CI_TOKEN}"
 
 # ============================================================
@@ -389,6 +455,95 @@ pct exec "${DEPLOY_CTID}" -- bash -c "
   echo '${GITHUB_PAT}' | su - runner -c 'docker login ghcr.io -u ${GHCR_USER} --password-stdin' 2>&1
 " | tail -2
 ok "Deploy runner logged into GHCR"
+
+# ============================================================
+# Portainer Edge Agent
+# ============================================================
+if [[ "$PORTAINER_ENABLED" == "true" && -n "$PORTAINER_EDGE_KEY" ]]; then
+  divider "Installing Portainer Edge Agents"
+
+  for PA_CTID in "${CI_CTID}" "${DEPLOY_CTID}"; do
+    PA_NAME=$(pct exec "${PA_CTID}" -- hostname 2>/dev/null || echo "ct-${PA_CTID}")
+    info "Installing Portainer agent in CT ${PA_CTID} (${PA_NAME})..."
+
+    # Ensure Docker is available (CI LXC may not have it from the runner setup)
+    HAS_DOCKER=$(pct exec "${PA_CTID}" -- bash -c "command -v docker && echo yes || echo no" 2>/dev/null)
+    if [[ "$HAS_DOCKER" != *"yes"* ]]; then
+      info "  Installing Docker in CT ${PA_CTID} for Portainer agent..."
+      pct exec "${PA_CTID}" -- bash -c "
+        apt-get install -y -qq ca-certificates curl gnupg
+        install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+        chmod a+r /etc/apt/keyrings/docker.asc
+        CODENAME=\$(. /etc/os-release && echo \"\$VERSION_CODENAME\")
+        curl -sf \"https://download.docker.com/linux/debian/dists/\${CODENAME}/Release\" >/dev/null 2>&1 || CODENAME=bookworm
+        echo \"deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \${CODENAME} stable\" \
+          > /etc/apt/sources.list.d/docker.list
+        apt-get update -qq
+        apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin
+        systemctl enable --now docker
+        usermod -aG docker runner 2>/dev/null || true
+      " 2>&1 | tail -3
+    fi
+
+    # Run Portainer Edge Agent container
+    pct exec "${PA_CTID}" -- bash -c "
+      docker rm -f portainer_edge_agent 2>/dev/null || true
+      docker run -d \
+        --name portainer_edge_agent \
+        --restart always \
+        -v /var/run/docker.sock:/var/run/docker.sock \
+        -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+        -v /:/host \
+        -v portainer_agent_data:/data \
+        -e EDGE=1 \
+        -e EDGE_ID='${PA_CTID}' \
+        -e EDGE_KEY='${PORTAINER_EDGE_KEY}' \
+        -e EDGE_INSECURE_POLL=1 \
+        -e PORTAINER_URL='${PORTAINER_URL}' \
+        portainer/agent:latest
+    " 2>&1 | tail -2
+
+    ok "Portainer agent running in CT ${PA_CTID}"
+  done
+fi
+
+# ============================================================
+# Nginx Proxy Manager — configure staging proxy
+# ============================================================
+if [[ "$NPM_ENABLED" == "true" && -n "$NPM_API_URL" ]]; then
+  divider "Configuring Nginx Proxy Manager"
+
+  # Download npm-proxy.sh into the deploy LXC
+  pct exec "${DEPLOY_CTID}" -- bash -c "
+    curl -sLO https://raw.githubusercontent.com/w-gitops/grocyscan/main/scripts/npm-proxy.sh
+    chmod +x npm-proxy.sh
+  "
+
+  # Test NPM connectivity
+  info "Testing NPM API connectivity..."
+  NPM_HEALTH=$(pct exec "${DEPLOY_CTID}" -- bash -c "
+    export NPM_API_URL='${NPM_API_URL}'
+    export NPM_API_EMAIL='${NPM_API_EMAIL}'
+    export NPM_API_PASSWORD='${NPM_API_PASSWORD}'
+    bash /root/npm-proxy.sh health 2>&1
+  " 2>/dev/null) || true
+  echo "    ${NPM_HEALTH}"
+
+  # Create staging proxy: dev.grocyscan.ssiops.com → deploy_ip:9000
+  info "Creating staging proxy: dev.grocyscan.ssiops.com → ${DEPLOY_IP}:9000"
+  pct exec "${DEPLOY_CTID}" -- bash -c "
+    export NPM_API_URL='${NPM_API_URL}'
+    export NPM_API_EMAIL='${NPM_API_EMAIL}'
+    export NPM_API_PASSWORD='${NPM_API_PASSWORD}'
+    export NPM_CERT_ID='${NPM_CERT_ID:-0}'
+    bash /root/npm-proxy.sh create dev.grocyscan.ssiops.com '${DEPLOY_IP}' 9000 2>&1
+  " 2>/dev/null && ok "Staging proxy created" || warn "Staging proxy creation failed (staging may not be deployed yet — proxy will be created on first deploy)"
+
+  # Note about preview proxies
+  info "Preview proxies (pr-N.preview.grocyscan.ssiops.com) will be"
+  info "created automatically by GitHub Actions on each PR."
+fi
 
 # ============================================================
 divider "Verifying runners"
@@ -442,23 +597,52 @@ echo ""
 echo -e "  ${BOLD}Runners should appear at:${NC}"
 echo "    ${GITHUB_URL}/settings/actions/runners"
 echo ""
+if [[ "$PORTAINER_ENABLED" == "true" ]]; then
+  echo -e "  ${BOLD}Portainer:${NC}"
+  echo "    Agents running in both LXCs"
+  echo "    Server: ${PORTAINER_URL}"
+  echo ""
+fi
+
+if [[ "$NPM_ENABLED" == "true" ]]; then
+  echo -e "  ${BOLD}Nginx Proxy Manager:${NC}"
+  echo "    API: ${NPM_API_URL}"
+  echo "    Staging proxy: dev.grocyscan.ssiops.com → ${DEPLOY_IP}:9000"
+  echo "    Preview proxies: created automatically per PR"
+  echo ""
+fi
+
 echo -e "  ${BOLD}Remaining setup:${NC}"
 echo ""
-echo "  1. Add GitHub Secrets (repo Settings > Secrets > Actions):"
+
+REMAINING_STEP=0
+next_step() { REMAINING_STEP=$((REMAINING_STEP + 1)); echo "  ${REMAINING_STEP}."; }
+
+echo -n "$(next_step)" && echo " Add GitHub Secrets (repo Settings > Secrets > Actions):"
 echo "     DEPLOY_SSH_KEY      — ed25519 private key for production (192.168.200.37)"
 echo "     DEPLOY_HOST         — 192.168.200.37"
-echo "     NPM_API_URL         — http://<npm-host>:81"
-echo "     NPM_API_EMAIL       — NPM admin email"
-echo "     NPM_API_PASSWORD    — NPM admin password"
-echo "     NPM_CERT_ID         — wildcard cert ID in NPM (optional)"
+if [[ "$NPM_ENABLED" == "true" ]]; then
+  echo "     NPM_API_URL         — ${NPM_API_URL}"
+  echo "     NPM_API_EMAIL       — ${NPM_API_EMAIL}"
+  echo "     NPM_API_PASSWORD    — (already configured)"
+  echo "     NPM_CERT_ID         — ${NPM_CERT_ID:-0}"
+else
+  echo "     NPM_API_URL         — http://<npm-host>:81"
+  echo "     NPM_API_EMAIL       — NPM admin email"
+  echo "     NPM_API_PASSWORD    — NPM admin password"
+  echo "     NPM_CERT_ID         — wildcard cert ID in NPM (optional)"
+fi
 echo ""
-echo "  2. Add wildcard DNS records:"
+
+echo -n "$(next_step)" && echo " Add wildcard DNS records:"
 echo "     *.preview.grocyscan.ssiops.com → ${DEPLOY_IP}"
 echo "     dev.grocyscan.ssiops.com       → ${DEPLOY_IP}"
 echo ""
-echo "  3. Create the dev branch (if it doesn't exist):"
+
+echo -n "$(next_step)" && echo " Create the dev branch (if it doesn't exist):"
 echo "     git checkout main && git checkout -b dev && git push -u origin dev"
 echo ""
-echo "  4. Push a PR targeting dev — the full pipeline will run!"
+
+echo -n "$(next_step)" && echo " Push a PR targeting dev — the full pipeline will run!"
 echo ""
 echo -e "${BOLD}============================================${NC}"
