@@ -1,19 +1,19 @@
 ---
-description: Remote development server configuration for GrocyScan
+description: Remote server configuration and deployment methods
 alwaysApply: true
 ---
 
-# Remote Development Server
+# Deployment
 
-The remote development server for this project is:
+## Environments
 
-```
-Host: 192.168.200.37
-User: root
-SSH: root@192.168.200.37
-```
+| Environment | URL | Server | Method |
+|-------------|-----|--------|--------|
+| Production | `https://grocyscan.ssiops.com` | `192.168.200.37` | Bare install (rsync + systemd) |
+| Staging | `https://dev.grocyscan.ssiops.com` | Proxmox runner | Docker `:dev` (auto on push to `dev`) |
+| Preview PR #N | `https://pr-N.preview.grocyscan.ssiops.com` | Proxmox runner | Docker `:pr-N` (auto on PR) |
 
-## Deployment Methods
+## Deploy Methods
 
 ### 1. Smart Deploy (Recommended — works everywhere)
 ```bash
@@ -22,32 +22,37 @@ SSH: root@192.168.200.37
 ./scripts/cursor-deploy.sh preview   # Get preview URL for current PR
 ```
 
-### 2. Direct Deploy (Local network only)
-- Use `.\scripts\deploy.ps1` (Windows) or `./scripts/deploy.sh` (Linux/Mac)
-- The application is installed at `/opt/grocyscan` on the remote server
-- Service name: `grocyscan` (managed by systemd)
-- Application port: 3334
+### 2. Direct Deploy (Local network only — production server)
+```bash
+./scripts/deploy.sh                  # Full rsync + systemd deploy
+./scripts/deploy.ps1                 # Windows equivalent
+```
 
 ### 3. CI/CD Deploy (Automatic)
-- **Preview**: Opens automatically when a PR is created (via GitHub Actions + Proxmox runner)
-- **Production**: Deploys automatically when PR is merged to `main`
-- See `.cursor/rules/cicd.mdc` for full CI/CD documentation
+- **Preview**: Auto on PR create/update (Docker on Proxmox, HTTPS via NPM)
+- **Staging**: Auto on push to `dev` (Docker on Proxmox)
+- **Production**: Auto on push to `main` (rsync + systemd)
+- See `.cursor/rules/cicd.mdc` for full documentation
 
-## Common Commands
+## Production Server
+
+```
+Host: 192.168.200.37
+User: root
+SSH: root@192.168.200.37
+Path: /opt/grocyscan
+Service: grocyscan (systemd)
+Port: 3334
+```
+
+### Common Commands
 
 ```bash
-# SSH into the server
-ssh root@192.168.200.37
-
-# Check service status
 ssh root@192.168.200.37 "systemctl status grocyscan"
-
-# View logs
 ssh root@192.168.200.37 "journalctl -u grocyscan -f"
-
-# Restart service
 ssh root@192.168.200.37 "systemctl restart grocyscan"
+ssh root@192.168.200.37 "curl -s http://localhost:3334/health"
 
-# Check CI status (works in cloud agents too)
+# CI status (works in cloud agents too)
 gh run list --branch $(git rev-parse --abbrev-ref HEAD)
 ```

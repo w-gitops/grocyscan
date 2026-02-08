@@ -1,37 +1,57 @@
+---
+description: CI/CD pipeline reference for Cursor agents — branching model, deployment, and testing
+alwaysApply: true
+---
+
 # CI/CD Pipeline & Deployment
 
-## Architecture
-
-The project uses GitHub Actions for CI/CD with a self-hosted runner on Proxmox for preview deployments.
+## Branching Model
 
 ```
-Branch push → CI tests → Docker build → Preview deploy (PR) → Production deploy (main merge)
+feature/* ──PR──► dev ──PR──► main
+                   │           │
+                Staging     Production
 ```
+
+- **Feature branches** PR into `dev` (never directly to `main`)
+- **`dev`** is the integration branch — merges to `main` when ready for production
+- **`main`** is always production-deployable
+
+## Hybrid Deploy Strategy
+
+| Target | Method | Why |
+|--------|--------|-----|
+| Previews | Docker on Proxmox | Ephemeral isolation per PR |
+| Staging (`dev`) | Docker on Proxmox | Persistent `:dev` image at port 9000 |
+| Production (`main`) | Bare install (rsync + systemd) | Fast, simple, no Docker overhead |
+| CI tests | Bare Python/Node on runner | No container overhead for Playwright |
 
 ## For Cursor Cloud Agents
 
-Cloud agents cannot SSH to local servers. Use these patterns instead:
+Cloud agents cannot SSH to local servers. Use GitHub Actions + `gh` CLI.
 
 ### Deploying Changes
-1. Commit and push to your branch
-2. Create a PR if one doesn't exist: `gh pr create --title "..." --body "..."`
-3. CI runs automatically (tests, docker build, preview deploy)
+1. Commit and push to your feature branch
+2. Create a PR targeting `dev`: `gh pr create --base dev --title "..." --body "..."`
+3. CI runs automatically (tests + preview deploy)
 4. Check status: `gh run list --branch <branch>`
 5. View logs: `gh run view <run-id> --log`
 
-### Checking Preview Deployments
-- Preview URLs are posted as PR comments automatically
-- Each PR gets port `10000 + PR_NUMBER` on the Proxmox runner
+### Preview URLs
+- Each PR gets HTTPS: `https://pr-N.preview.grocyscan.ssiops.com`
 - Credentials: `admin` / `test`
+- URL posted as PR comment automatically
 - Check PR: `gh pr view --json comments`
+
+### Staging
+- `dev` branch auto-deploys to `https://dev.grocyscan.ssiops.com`
+- Updated on every push to `dev` (including PR merges)
 
 ### Triggering Manual Deploys
 ```bash
-# Trigger preview deploy
-gh workflow run preview-deploy.yml -f pr_number=<N>
-
-# Trigger production deploy
-gh workflow run deploy-production.yml
+gh workflow run preview-deploy.yml -f pr_number=<N>   # Preview
+gh workflow run deploy-dev.yml                         # Staging
+gh workflow run deploy-production.yml                  # Production
 ```
 
 ### Using the Helper Script
@@ -44,11 +64,11 @@ gh workflow run deploy-production.yml
 
 ## For Cursor Desktop Agents
 
-Desktop agents on the local network can use direct SSH deployment:
+Desktop agents on the local network can deploy directly via SSH.
 
 ### Quick Deploy (Direct SSH)
 ```bash
-./scripts/deploy.sh          # Full deploy via rsync + systemd
+./scripts/deploy.sh          # Full deploy via rsync + systemd (production)
 ./scripts/cursor-deploy.sh   # Smart deploy (auto-detects environment)
 ```
 
@@ -60,30 +80,44 @@ systemctl restart grocyscan
 curl -s http://localhost:3334/health
 ```
 
-## GitHub Actions Workflows
+## Workflows
 
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| `tests.yml` | PR to main/dev | Pytest with Postgres |
-| `ui-tests.yml` | PR to main/dev | Playwright E2E |
-| `docker-build.yml` | Push to main | Build & push GHCR image |
-| `preview-deploy.yml` | PR opened/updated | Deploy preview on Proxmox |
-| `preview-cleanup.yml` | PR closed | Tear down preview |
-| `deploy-production.yml` | Push to main | Deploy to production |
-
-## Docker Images
-
-- Registry: `ghcr.io/w-gitops/grocyscan`
-- Tags: `:latest` (main), `:pr-N` (previews), `:<sha>` (every build)
-- Multi-stage: Frontend (Node) + Backend (Python) in one image
+| Workflow | Trigger | Runner | Purpose |
+|----------|---------|--------|---------|
+| `tests.yml` | PR to dev/main | Self-hosted (proxmox-ci) | Pytest |
+| `ui-tests.yml` | PR to dev/main | Self-hosted (proxmox-ci) | Playwright E2E |
+| `docker-build.yml` | Push to dev/main | GitHub-hosted | Build GHCR image |
+| `preview-deploy.yml` | PR to dev/main | Self-hosted (proxmox) | Docker preview + HTTPS proxy |
+| `preview-cleanup.yml` | PR closed | Self-hosted (proxmox) | Tear down preview + proxy |
+| `deploy-dev.yml` | Push to dev | Self-hosted (proxmox) | Staging Docker deploy |
+| `deploy-production.yml` | Push to main | GitHub-hosted (SSH) | Bare install to production |
 
 ## Environments
 
 | Environment | URL | Method |
 |-------------|-----|--------|
-| Production | `https://grocyscan.ssiops.com` | systemd or Docker on `192.168.200.37` |
-| Preview PR #N | `http://<runner-ip>:1000N` | Docker on Proxmox runner |
+| Production | `https://grocyscan.ssiops.com` | Bare install on `192.168.200.37` |
+| Staging | `https://dev.grocyscan.ssiops.com` | Docker `:dev` on Proxmox |
+| Preview PR #N | `https://pr-N.preview.grocyscan.ssiops.com` | Docker `:pr-N` on Proxmox |
 | Local Dev | `http://localhost:3334` / `:3335` | uvicorn + vite dev |
+
+## Docker Images
+
+- Registry: `ghcr.io/w-gitops/grocyscan`
+- Tags: `:latest` (main), `:dev` (dev branch), `:pr-N` (previews), `:<sha>` (every build)
+- Multi-stage: Frontend (Node) + Backend (Python) in one image
+
+## NPM Proxy Management
+
+Preview and staging HTTPS is managed via Nginx Proxy Manager API:
+```bash
+# Create proxy (used by CI automatically)
+NPM_API_URL=... NPM_API_EMAIL=... NPM_API_PASSWORD=... \
+  ./scripts/npm-proxy.sh create pr-42.preview.grocyscan.ssiops.com 192.168.200.50 10042
+
+# List all proxies
+./scripts/npm-proxy.sh list
+```
 
 ## Required GitHub Secrets
 
@@ -92,3 +126,7 @@ curl -s http://localhost:3334/health
 | `DEPLOY_SSH_KEY` | SSH key for production server |
 | `DEPLOY_HOST` | Production server IP (default: 192.168.200.37) |
 | `DEPLOY_USER` | SSH user (default: root) |
+| `NPM_API_URL` | Nginx Proxy Manager API URL |
+| `NPM_API_EMAIL` | NPM admin email |
+| `NPM_API_PASSWORD` | NPM admin password |
+| `NPM_CERT_ID` | Wildcard SSL certificate ID in NPM |

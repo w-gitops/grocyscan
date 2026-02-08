@@ -172,8 +172,8 @@ deploy_via_ci() {
 
   if [[ -z "$pr_num" ]]; then
     warn "No PR found for branch ${branch}."
-    info "Create a PR to trigger preview deployment:"
-    info "  gh pr create --title 'Deploy ${branch}' --body 'Preview deployment'"
+    info "Create a PR targeting dev to trigger preview deployment:"
+    info "  gh pr create --base dev --title 'Deploy ${branch}' --body 'Preview deployment'"
     return
   fi
 
@@ -290,6 +290,10 @@ cmd_trigger() {
     info "Triggering production deployment..."
     gh workflow run deploy-production.yml
     ok "Production deploy workflow triggered."
+  elif [[ "$branch" == "dev" ]]; then
+    info "Triggering staging deployment..."
+    gh workflow run deploy-dev.yml
+    ok "Staging deploy workflow triggered."
   else
     local pr_num
     pr_num=$(get_pr_number)
@@ -298,7 +302,8 @@ cmd_trigger() {
       gh workflow run preview-deploy.yml -f "pr_number=${pr_num}"
       ok "Preview deploy workflow triggered."
     else
-      warn "No PR found. Create one first or push to trigger CI."
+      warn "No PR found. Create one first (target: dev) or push to trigger CI."
+      info "  gh pr create --base dev --title '...' --body '...'"
     fi
   fi
 
