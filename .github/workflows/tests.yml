@@ -1,24 +1,37 @@
 name: Tests
 
+# Pytest — runs on self-hosted runner by default (fast pip cache, local Postgres).
+# Falls back to GitHub-hosted ubuntu on manual dispatch.
+
 on:
   pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - ready_for_review
-    branches:
-      - dev
-      - main
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [dev, main]
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Runner to use"
+        required: false
+        default: "self-hosted"
+        type: choice
+        options:
+          - self-hosted
+          - ubuntu-latest
 
 permissions:
   contents: read
 
 jobs:
-  pytest:
-    name: Pytest (Postgres)
-    if: github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
+  # ----------------------------------------------------------------
+  # Self-hosted Proxmox CI runner (default)
+  # ----------------------------------------------------------------
+  pytest-selfhosted:
+    name: Pytest (self-hosted)
+    if: >-
+      (github.event_name != 'workflow_dispatch' || github.event.inputs.runner == 'self-hosted')
+      && github.event.pull_request.draft == false
+    runs-on: [self-hosted, linux, x64, proxmox-ci]
+
     services:
       postgres:
         image: postgres:17-alpine
@@ -42,16 +55,99 @@ jobs:
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10
+
     env:
       DATABASE_URL: postgresql+asyncpg://grocyscan:grocyscan@localhost:5432/homebot
       REDIS_URL: redis://localhost:6379/0
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Paths filter (pytest-relevant)
+      - name: Paths filter
+        id: paths
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            pytest:
+              - 'app/**'
+              - 'tests/**'
+              - 'migrations/**'
+              - 'requirements*.txt'
+              - 'alembic.ini'
+              - 'pyproject.toml'
+
+      - name: Skip if no relevant changes
+        if: steps.paths.outputs.pytest != 'true'
+        run: echo "No app/tests/migrations changes — skipping pytest."
+
+      - name: Install dependencies
+        if: steps.paths.outputs.pytest == 'true'
+        run: pip install --quiet -r requirements.txt -r requirements-dev.txt
+
+      - name: Run migrations
+        if: steps.paths.outputs.pytest == 'true'
+        run: python3 -m alembic upgrade head
+
+      - name: Run tests
+        if: steps.paths.outputs.pytest == 'true'
+        run: |
+          mkdir -p test-artifacts
+          python3 -m pytest tests/ -v --tb=short -n auto 2>&1 | tee test-artifacts/pytest.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Upload test artifacts
+        if: always() && steps.paths.outputs.pytest == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts
+          path: test-artifacts/
+
+  # ----------------------------------------------------------------
+  # GitHub-hosted fallback
+  # ----------------------------------------------------------------
+  pytest-github:
+    name: Pytest (GitHub-hosted)
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.runner == 'ubuntu-latest'
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: grocyscan
+          POSTGRES_PASSWORD: grocyscan
+          POSTGRES_DB: homebot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U grocyscan"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://grocyscan:grocyscan@localhost:5432/homebot
+      REDIS_URL: redis://localhost:6379/0
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Paths filter
         id: paths
         uses: dorny/paths-filter@v3
         with:
@@ -94,8 +190,9 @@ jobs:
           mkdir -p test-artifacts
           python -m pytest tests/ -v --tb=short -n auto 2>&1 | tee test-artifacts/pytest.log
           exit ${PIPESTATUS[0]}
-      - name: Upload test-artifacts
-        if: steps.paths.outputs.pytest == 'true'
+
+      - name: Upload test artifacts
+        if: always() && steps.paths.outputs.pytest == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: test-artifacts
