@@ -1,0 +1,213 @@
+name: Deploy to Production
+
+# Deploy to the production server when code is merged to main.
+# Builds the Docker image, pushes to GHCR, then deploys via SSH.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (default: latest)"
+        required: false
+        default: "latest"
+        type: string
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false  # Never cancel a production deployment
+
+permissions:
+  contents: read
+  packages: write
+  deployments: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Build and push the production image
+  build:
+    name: Build Production Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=
+            type=raw,value={{date 'YYYYMMDD-HHmmss'}}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Deploy to production server
+  deploy:
+    name: Deploy to Production
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://grocyscan.ssiops.com
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST || '192.168.200.37' }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          cat >> ~/.ssh/config << EOF
+          Host deploy-target
+            HostName ${{ secrets.DEPLOY_HOST || '192.168.200.37' }}
+            User ${{ secrets.DEPLOY_USER || 'root' }}
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking no
+          EOF
+
+      - name: Determine deployment method
+        id: method
+        run: |
+          # Check if the server uses Docker or systemd+venv deployment
+          METHOD=$(ssh deploy-target "test -f /opt/grocyscan-docker/docker-compose.yml && echo docker || echo legacy" 2>/dev/null || echo "legacy")
+          echo "method=${METHOD}" >> "$GITHUB_OUTPUT"
+          echo "Deployment method: ${METHOD}"
+
+      - name: Deploy (Docker method)
+        if: steps.method.outputs.method == 'docker'
+        env:
+          IMAGE_TAG: ${{ github.event.inputs.image_tag || 'latest' }}
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}"
+          echo "Deploying image: ${IMAGE}"
+
+          ssh deploy-target << DEPLOY_SCRIPT
+            set -e
+            cd /opt/grocyscan-docker
+
+            # Pull latest image
+            docker pull "${IMAGE}"
+
+            # Update the compose env
+            sed -i "s|^GROCYSCAN_IMAGE=.*|GROCYSCAN_IMAGE=${IMAGE}|" .env 2>/dev/null || \
+              echo "GROCYSCAN_IMAGE=${IMAGE}" >> .env
+
+            # Deploy with rolling restart
+            docker compose pull
+            docker compose up -d --wait --timeout 120
+
+            # Run migrations inside the container
+            docker compose exec -T app python -m alembic upgrade head
+
+            # Verify health
+            sleep 5
+            curl -sf http://localhost:3334/health || { echo "Health check failed!"; exit 1; }
+            echo "Deployment successful!"
+          DEPLOY_SCRIPT
+
+      - name: Deploy (Legacy/systemd method)
+        if: steps.method.outputs.method == 'legacy'
+        run: |
+          echo "Deploying via rsync + systemd..."
+
+          # Sync application code
+          rsync -avz --delete \
+            --exclude '__pycache__' \
+            --exclude '*.pyc' \
+            --exclude '.git' \
+            --exclude 'venv' \
+            --exclude '.env' \
+            --exclude 'tests' \
+            --exclude '.cursor' \
+            --exclude '.ralph' \
+            --exclude 'prd' \
+            --exclude 'docker' \
+            --exclude 'infrastructure' \
+            --exclude 'frontend/node_modules' \
+            --exclude 'frontend/src' \
+            --exclude 'frontend/tests' \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+            ./ "${{ secrets.DEPLOY_USER || 'root' }}@${{ secrets.DEPLOY_HOST || '192.168.200.37' }}:/opt/grocyscan/"
+
+          ssh deploy-target << 'DEPLOY_SCRIPT'
+            set -e
+            cd /opt/grocyscan
+
+            # Install dependencies
+            ./venv/bin/pip install -q -r requirements.txt
+
+            # Run migrations
+            ./venv/bin/alembic upgrade head
+
+            # Restart service
+            systemctl restart grocyscan
+
+            # Wait and verify
+            sleep 3
+            curl -sf http://localhost:3334/health || curl -sf http://localhost:3334/api/health || {
+              echo "Health check failed!"
+              journalctl -u grocyscan -n 20 --no-pager
+              exit 1
+            }
+            echo "Deployment successful!"
+          DEPLOY_SCRIPT
+
+      - name: Verify deployment
+        run: |
+          echo "Verifying deployment..."
+          ssh deploy-target << 'VERIFY'
+            echo "=== Service Status ==="
+            systemctl is-active grocyscan 2>/dev/null && systemctl status grocyscan --no-pager | head -10 || true
+            docker ps --filter "name=grocyscan" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || true
+
+            echo ""
+            echo "=== Health Check ==="
+            curl -s http://localhost:3334/health || curl -s http://localhost:3334/api/health || echo "No health endpoint responding"
+          VERIFY
+
+      - name: Create deployment record
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = context.sha.substring(0, 8);
+            const success = '${{ job.status }}' === 'success' ? '✅' : '❌';
+
+            // Create a deployment status
+            console.log(`${success} Deployment of ${sha} to production`);

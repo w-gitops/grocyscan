@@ -1,9 +1,33 @@
 name: Build and Push Docker Image
 
+# Build the multi-stage Docker image and push to GitHub Container Registry.
+# Triggers on pushes to main (production) and PRs (build validation only).
+# Branch-specific images for preview deployments are built by preview-deploy.yml.
+
 on:
   push:
     branches:
       - main
+    paths:
+      - 'app/**'
+      - 'frontend/**'
+      - 'migrations/**'
+      - 'requirements*.txt'
+      - 'docker/Dockerfile'
+      - 'alembic.ini'
+      - 'pyproject.toml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - 'frontend/**'
+      - 'migrations/**'
+      - 'requirements*.txt'
+      - 'docker/Dockerfile'
+      - 'alembic.ini'
+      - 'pyproject.toml'
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -42,7 +66,7 @@ jobs:
           tags: |
             # Set latest tag for default branch
             type=raw,value=latest,enable={{is_default_branch}}
-            # Tag with branch name
+            # Tag with branch name (sanitized)
             type=ref,event=branch
             # Tag with PR number
             type=ref,event=pr
@@ -52,6 +76,8 @@ jobs:
             type=semver,pattern={{major}}
             # Tag with short SHA
             type=sha,prefix=
+            # Tag with date for rollback identification
+            type=raw,value={{date 'YYYYMMDD-HHmmss'}},enable={{is_default_branch}}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
