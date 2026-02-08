@@ -70,9 +70,33 @@ ssh root@192.168.200.37 "curl -s http://localhost:3334/api/endpoint | python3 -m
 type "c:\git\grocyscan\scripts\test.py" | ssh root@192.168.200.37 "cat > /opt/grocyscan/scripts/test.py && cd /opt/grocyscan && /opt/grocyscan/venv/bin/python scripts/test.py"
 ```
 
+## CI/CD Pipeline
+
+The project has a full CI/CD pipeline with preview deployments. See `.cursor/rules/cicd.mdc` for details.
+
+### For Cloud Agents (no local network):
+```bash
+# Push and let CI handle it
+git push -u origin <branch>
+
+# Check CI status
+gh run list --branch <branch>
+
+# Create PR for preview deployment
+gh pr create --title "..." --body "..."
+```
+
+### For Desktop Agents (local network):
+```bash
+# Smart deploy (auto-detects environment)
+./scripts/cursor-deploy.sh deploy
+```
+
 ## Important Notes
 
 1. **Always deploy before testing** - The remote server runs the code, not your local machine
 2. **Restart after Python changes** - The service needs restart for code changes to take effect
 3. **Check logs on errors** - Use `journalctl` to see Python tracebacks
 4. **Commit after verification** - Only commit once changes are tested and working on the server
+5. **CI runs on PRs** - Tests and preview deployments trigger automatically on PR events
+6. **Production deploys on main** - Merging to main triggers automatic production deployment

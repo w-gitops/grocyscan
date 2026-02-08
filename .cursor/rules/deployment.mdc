@@ -13,12 +13,25 @@ User: root
 SSH: root@192.168.200.37
 ```
 
-## Deployment
+## Deployment Methods
 
-- Use `.\scripts\deploy.ps1` (Windows) or `./scripts/deploy.sh` (Linux/Mac) to deploy
+### 1. Smart Deploy (Recommended — works everywhere)
+```bash
+./scripts/cursor-deploy.sh deploy    # Auto-detects local vs cloud
+./scripts/cursor-deploy.sh status    # Check CI/deployment status
+./scripts/cursor-deploy.sh preview   # Get preview URL for current PR
+```
+
+### 2. Direct Deploy (Local network only)
+- Use `.\scripts\deploy.ps1` (Windows) or `./scripts/deploy.sh` (Linux/Mac)
 - The application is installed at `/opt/grocyscan` on the remote server
 - Service name: `grocyscan` (managed by systemd)
 - Application port: 3334
+
+### 3. CI/CD Deploy (Automatic)
+- **Preview**: Opens automatically when a PR is created (via GitHub Actions + Proxmox runner)
+- **Production**: Deploys automatically when PR is merged to `main`
+- See `.cursor/rules/cicd.mdc` for full CI/CD documentation
 
 ## Common Commands
 
@@ -34,4 +47,7 @@ ssh root@192.168.200.37 "journalctl -u grocyscan -f"
 
 # Restart service
 ssh root@192.168.200.37 "systemctl restart grocyscan"
+
+# Check CI status (works in cloud agents too)
+gh run list --branch $(git rev-parse --abbrev-ref HEAD)
 ```
