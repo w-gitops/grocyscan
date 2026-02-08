@@ -95,53 +95,111 @@ feature/* ──PR──► dev ──PR──► main
 | **Production** | Bare install (rsync + systemd) | Fast iteration, no Docker overhead, direct filesystem access, journalctl logs, simple debugging. |
 | **CI tests** | Bare install on runner | No Docker overhead for Python/Node. Playwright runs natively with pre-installed browsers. Fast pip/npm cache. |
 
-## Self-Hosted Runners
+## Self-Hosted Runners (Proxmox LXCs)
 
-Two runner profiles on Proxmox (can be one VM with `--profile all` or separate VMs):
+Runners are Debian 13 (Trixie) LXC containers on Proxmox. LXCs are preferred
+over VMs for near-native performance, fast boot, and low resource overhead.
+
+### LXC Specifications
+
+| LXC | Profile | CPU | RAM | Disk | Proxmox Features | Purpose |
+|-----|---------|-----|-----|------|-------------------|---------|
+| `grocyscan-ci` | `ci` | 2 vCPU | 4 GB | 30 GB | (default) | pytest + Playwright |
+| `grocyscan-deploy` | `deploy` | 2 vCPU | 4 GB | 50 GB | **nesting=1, keyctl=1** | Docker preview/staging |
+| `grocyscan-runner` | `all` | 4 vCPU | 6 GB | 50 GB | **nesting=1, keyctl=1** | Combined (single LXC) |
+
+**Important**: The `deploy` and `all` profiles require Docker-in-LXC support.
+In Proxmox, the LXC must have `nesting=1` and `keyctl=1` enabled:
+```bash
+pct set <CTID> --features nesting=1,keyctl=1
+```
 
 ### CI Runner (`proxmox-ci`)
 
-Runs pytest and Playwright. Bare-metal Python, Node, and browsers — no Docker overhead during test execution.
+Runs pytest and Playwright. Bare-metal Python, Node, and Chromium — no Docker
+overhead during test execution. Python/Node are Debian-native packages.
 
 ```
 Labels: self-hosted, linux, x64, proxmox-ci
-Installs: Python 3.12, Node 20, Playwright Chromium system deps
+Installs: Python 3 (Debian native), Node 20, Playwright Chromium system deps
 Used by: tests.yml, ui-tests.yml
 ```
 
 ### Deploy Runner (`proxmox`, `preview`)
 
-Runs preview/staging Docker stacks and manages NPM proxy entries.
+Runs preview/staging Docker Compose stacks and manages NPM proxy entries.
 
 ```
 Labels: self-hosted, linux, x64, proxmox, preview
-Installs: Docker, Docker Compose
+Installs: Docker CE, Docker Compose plugin
 Used by: preview-deploy.yml, preview-cleanup.yml, deploy-dev.yml
 ```
 
 ### Setup
 
+#### Step 1: Create LXCs on the Proxmox host
+
 ```bash
-# Option A: Two separate VMs
-bash infrastructure/setup-runner.sh \
+# Run on the Proxmox host (not inside a container)
+
+# Option A: Two LXCs (separate CI and deploy)
+bash infrastructure/create-lxc.sh --profile ci \
+  --ip 192.168.200.50/24 --gw 192.168.200.1
+bash infrastructure/create-lxc.sh --profile deploy \
+  --ip 192.168.200.51/24 --gw 192.168.200.1
+
+# Option B: One combined LXC
+bash infrastructure/create-lxc.sh --profile all \
+  --ip 192.168.200.50/24 --gw 192.168.200.1
+```
+
+#### Step 2: Install the runner (inside each LXC)
+
+```bash
+# Get a runner token
+gh api -X POST repos/w-gitops/grocyscan/actions/runners/registration-token --jq .token
+
+# SSH into the LXC and run setup
+ssh root@192.168.200.50
+
+# Option A: CI runner
+bash setup-runner.sh \
   --github-url https://github.com/w-gitops/grocyscan \
   --runner-token <TOKEN> \
   --runner-name grocyscan-ci \
   --profile ci
 
-bash infrastructure/setup-runner.sh \
+# Option B: Deploy runner
+bash setup-runner.sh \
   --github-url https://github.com/w-gitops/grocyscan \
   --runner-token <TOKEN> \
   --runner-name grocyscan-deploy \
   --profile deploy
 
-# Option B: One VM that does everything
-bash infrastructure/setup-runner.sh \
+# Option C: Combined
+bash setup-runner.sh \
   --github-url https://github.com/w-gitops/grocyscan \
   --runner-token <TOKEN> \
-  --runner-name grocyscan-all \
+  --runner-name grocyscan-runner \
   --profile all
 ```
+
+#### Step 3: Login to GHCR (deploy/all profiles only)
+
+```bash
+su - runner
+echo $GITHUB_PAT | docker login ghcr.io -u <username> --password-stdin
+```
+
+### Why LXCs, Not VMs
+
+- **Performance**: Near-native CPU/IO — no hypervisor overhead
+- **Resources**: ~100MB base RAM vs ~500MB for a VM with kernel
+- **Boot time**: Seconds vs minutes
+- **Playwright**: All browser dependencies are userspace libraries, no kernel modules needed
+- **Docker-in-LXC**: Works perfectly on Proxmox 9 with nesting+keyctl enabled
+- **Swarm**: Not used — preview stacks are single-node Compose projects, Swarm adds
+  complexity without benefit here
 
 ## Nginx Proxy Manager Integration
 
