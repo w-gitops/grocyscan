@@ -1,0 +1,6 @@
+---
+# Docker socket — Homepage auto-discovers containers with homepage.* labels.
+# Preview stacks use these labels to appear/disappear dynamically.
+
+local:
+  socket: /var/run/docker.sock

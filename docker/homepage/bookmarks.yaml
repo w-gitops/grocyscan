@@ -1,0 +1,11 @@
+---
+- Developer:
+    - GitHub Actions:
+        - icon: github
+          href: "{{HOMEPAGE_VAR_GITHUB_URL}}/actions"
+    - GHCR Packages:
+        - icon: docker
+          href: "https://github.com/orgs/w-gitops/packages"
+    - Architecture Docs:
+        - icon: mdi-file-document
+          href: "{{HOMEPAGE_VAR_GITHUB_URL}}/blob/main/docs/cicd-architecture.md"

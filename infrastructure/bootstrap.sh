@@ -233,13 +233,36 @@ else
 fi
 
 # ============================================================
-divider "Step 8: Monitoring Tools"
+divider "Step 8: Homepage Dashboard"
+# ============================================================
+
+HOMEPAGE_ENABLED=""
+HOMEPAGE_PORT="3010"
+HOMEPAGE_DOMAIN=""
+PROXMOX_URL=""
+
+echo "  Homepage is a self-hosted dashboard that shows all active"
+echo "  previews, staging, production, and tools in one page."
+echo "  Preview stacks auto-appear/disappear via Docker labels."
+echo ""
+read -rp "$(echo -e "  ${CYAN}Install Homepage dashboard? [Y/n]${NC}: ")" hp_choice
+if [[ "${hp_choice,,}" != "n" ]]; then
+  HOMEPAGE_ENABLED="true"
+  prompt HOMEPAGE_PORT   "Homepage port" "3010"
+  prompt HOMEPAGE_DOMAIN "Homepage domain (blank to skip NPM proxy)" "ci.grocyscan.ssiops.com"
+  prompt PROXMOX_URL     "Proxmox web UI URL" "https://proxmox.local:8006"
+else
+  HOMEPAGE_ENABLED="false"
+fi
+
+# ============================================================
+divider "Step 9: Monitoring Tools"
 # ============================================================
 
 DOZZLE_ENABLED=""
 DOZZLE_PORT="8080"
 
-echo "  Optional monitoring tools for the runner LXCs:"
+echo "  Additional monitoring tools for the runner LXCs:"
 echo ""
 echo -e "    ${GREEN}Dozzle${NC}       — Web UI for Docker container logs (deploy LXC)"
 echo -e "    ${GREEN}lazydocker${NC}   — CLI dashboard for Docker (deploy LXC)"
@@ -285,6 +308,7 @@ echo ""
 echo -e "  ${BOLD}Extras:${NC}"
 echo "    Portainer:  ${PORTAINER_ENABLED}"
 echo "    NPM:        ${NPM_ENABLED}"
+echo "    Homepage:   ${HOMEPAGE_ENABLED}"
 echo "    Monitoring: ${DOZZLE_ENABLED}"
 echo ""
 
@@ -631,6 +655,64 @@ if [[ "$DOZZLE_ENABLED" == "true" ]]; then
 fi
 
 # ============================================================
+# Homepage Dashboard
+# ============================================================
+if [[ "$HOMEPAGE_ENABLED" == "true" ]]; then
+  divider "Installing Homepage Dashboard"
+
+  # Download homepage configs and compose file into the deploy LXC
+  info "Downloading Homepage configuration..."
+  pct exec "${DEPLOY_CTID}" -- bash -c "
+    mkdir -p /opt/homepage
+    cd /opt/homepage
+    curl -sLO https://raw.githubusercontent.com/w-gitops/grocyscan/main/docker/docker-compose.homepage.yml
+    mkdir -p homepage
+    for f in settings.yaml services.yaml docker.yaml widgets.yaml bookmarks.yaml; do
+      curl -sL -o homepage/\$f https://raw.githubusercontent.com/w-gitops/grocyscan/main/docker/homepage/\$f
+    done
+  "
+
+  # Build the environment file for Homepage
+  PORTAINER_URL_VAL="${PORTAINER_URL:-}"
+  NPM_URL_VAL="${NPM_API_URL:-}"
+  DOZZLE_PORT_VAL="${DOZZLE_PORT:-8080}"
+
+  info "Starting Homepage container..."
+  pct exec "${DEPLOY_CTID}" -- bash -c "
+    cd /opt/homepage
+    cat > .env << 'HPEOF'
+HOMEPAGE_PORT=${HOMEPAGE_PORT}
+HOMEPAGE_VAR_PROD_URL=https://grocyscan.ssiops.com
+HOMEPAGE_VAR_PROD_HEALTH_URL=http://192.168.200.37:3334/health
+HOMEPAGE_VAR_STAGING_URL=https://dev.grocyscan.ssiops.com
+HOMEPAGE_VAR_GITHUB_URL=https://github.com/${GITHUB_REPO}
+HOMEPAGE_VAR_DEPLOY_IP=${DEPLOY_IP}
+HOMEPAGE_VAR_DOZZLE_PORT=${DOZZLE_PORT_VAL}
+HOMEPAGE_VAR_PORTAINER_URL=${PORTAINER_URL_VAL}
+HOMEPAGE_VAR_NPM_URL=${NPM_URL_VAL}
+HOMEPAGE_VAR_PROXMOX_URL=${PROXMOX_URL:-https://proxmox.local:8006}
+HPEOF
+
+    docker compose -f docker-compose.homepage.yml up -d
+  " 2>&1 | tail -3
+
+  ok "Homepage running at http://${DEPLOY_IP}:${HOMEPAGE_PORT}"
+
+  # Create NPM proxy for Homepage if domain provided
+  if [[ -n "$HOMEPAGE_DOMAIN" && "$NPM_ENABLED" == "true" ]]; then
+    info "Creating NPM proxy for Homepage: ${HOMEPAGE_DOMAIN}"
+    pct exec "${DEPLOY_CTID}" -- bash -c "
+      export NPM_API_URL='${NPM_API_URL}'
+      export NPM_API_EMAIL='${NPM_API_EMAIL}'
+      export NPM_API_PASSWORD='${NPM_API_PASSWORD}'
+      export NPM_CERT_ID='${NPM_CERT_ID:-0}'
+      bash /root/npm-proxy.sh create '${HOMEPAGE_DOMAIN}' '${DEPLOY_IP}' ${HOMEPAGE_PORT} 2>&1
+    " 2>/dev/null && ok "Homepage proxy: https://${HOMEPAGE_DOMAIN}" \
+      || warn "Homepage NPM proxy failed — accessible via HTTP"
+  fi
+fi
+
+# ============================================================
 divider "Verifying runners"
 # ============================================================
 
@@ -694,6 +776,17 @@ if [[ "$NPM_ENABLED" == "true" ]]; then
   echo "    API: ${NPM_API_URL}"
   echo "    Staging proxy: dev.grocyscan.ssiops.com → ${DEPLOY_IP}:9000"
   echo "    Preview proxies: created automatically per PR"
+  echo ""
+fi
+
+if [[ "$HOMEPAGE_ENABLED" == "true" ]]; then
+  echo -e "  ${BOLD}Dashboard:${NC}"
+  if [[ -n "$HOMEPAGE_DOMAIN" && "$NPM_ENABLED" == "true" ]]; then
+    echo "    Homepage: https://${HOMEPAGE_DOMAIN}"
+  else
+    echo "    Homepage: http://${DEPLOY_IP}:${HOMEPAGE_PORT}"
+  fi
+  echo "    Previews auto-appear/disappear via Docker labels"
   echo ""
 fi
 

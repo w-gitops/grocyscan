@@ -1,0 +1,16 @@
+---
+- search:
+    provider: google
+    target: _blank
+
+- datetime:
+    text_size: xl
+    format:
+      dateStyle: short
+      timeStyle: short
+
+- resources:
+    label: Deploy Runner
+    cpu: true
+    memory: true
+    disk: /

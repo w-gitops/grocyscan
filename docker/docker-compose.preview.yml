@@ -39,6 +39,14 @@ services:
       timeout: 5s
       start_period: 15s
       retries: 5
+    labels:
+      - "homepage.group=Previews"
+      - "homepage.name=${PREVIEW_ID:-preview}"
+      - "homepage.icon=docker"
+      - "homepage.href=https://${PREVIEW_ID:-preview}.preview.grocyscan.ssiops.com"
+      - "homepage.description=Port ${PREVIEW_PORT:-10099}"
+      - "homepage.widget.type=customapi"
+      - "homepage.widget.url=http://grocyscan-${PREVIEW_ID:-preview}:3334/health"
 
   postgres:
     image: postgres:17-alpine
@@ -60,6 +68,11 @@ services:
     # No persistent volume — preview data is ephemeral
     tmpfs:
       - /var/lib/postgresql/data
+    labels:
+      - "homepage.group=Previews"
+      - "homepage.name=${PREVIEW_ID:-preview} DB"
+      - "homepage.icon=postgres"
+      - "homepage.description=Postgres 17"
 
   redis:
     image: redis:7-alpine
@@ -75,6 +88,11 @@ services:
       retries: 5
     tmpfs:
       - /data
+    labels:
+      - "homepage.group=Previews"
+      - "homepage.name=${PREVIEW_ID:-preview} Cache"
+      - "homepage.icon=redis"
+      - "homepage.description=Redis 7"
 
 networks:
   preview-net:
