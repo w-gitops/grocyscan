@@ -478,6 +478,15 @@ pct exec "${DEPLOY_CTID}" -- bash -c "
 " | tail -2
 ok "Deploy runner logged into GHCR"
 
+# ---- Install preview-status.sh on deploy runner ----
+info "Installing preview-status.sh on deploy runner..."
+pct exec "${DEPLOY_CTID}" -- bash -c "
+  curl -sLO https://raw.githubusercontent.com/w-gitops/grocyscan/main/scripts/preview-status.sh
+  chmod +x preview-status.sh
+  mv preview-status.sh /usr/local/bin/preview-status
+"
+ok "preview-status installed (run: ssh root@${DEPLOY_IP} preview-status)"
+
 # ============================================================
 # Portainer Edge Agent
 # ============================================================
@@ -687,6 +696,12 @@ if [[ "$NPM_ENABLED" == "true" ]]; then
   echo "    Preview proxies: created automatically per PR"
   echo ""
 fi
+
+echo -e "  ${BOLD}Debugging:${NC}"
+echo "    Preview dashboard:  ssh root@${DEPLOY_IP} preview-status"
+echo "    Preview logs:       ssh root@${DEPLOY_IP} preview-status logs pr-<N>"
+echo "    Preview inspect:    ssh root@${DEPLOY_IP} preview-status inspect pr-<N>"
+echo ""
 
 if [[ "$DOZZLE_ENABLED" == "true" ]]; then
   echo -e "  ${BOLD}Monitoring:${NC}"

@@ -160,6 +160,69 @@ jobs:
           done
           echo "healthy=false" >> "$GITHUB_OUTPUT"
 
+      - name: Collect debug info on failure
+        id: debug
+        if: steps.health.outputs.healthy != 'true'
+        run: |
+          echo "Health check failed — collecting debug info..."
+          # Use preview-status.sh debug-bundle if available, otherwise inline
+          if [[ -f scripts/preview-status.sh ]]; then
+            DEBUG=$(bash scripts/preview-status.sh debug-bundle "${PREVIEW_ID}" 2>&1 || echo "debug-bundle failed")
+          else
+            DEBUG=$(cat << DEBUGEOF
+          ### Preview Debug: ${PREVIEW_ID}
+
+          **Container Status:**
+          \`\`\`
+          $(docker compose -p "grocyscan-${PREVIEW_ID}" ps 2>&1 || echo "stack not found")
+          \`\`\`
+
+          **App Logs (last 40 lines):**
+          \`\`\`
+          $(docker logs "grocyscan-${PREVIEW_ID}" --tail 40 2>&1 || echo "no logs")
+          \`\`\`
+
+          **Postgres Logs (last 15 lines):**
+          \`\`\`
+          $(docker logs "grocyscan-${PREVIEW_ID}-postgres" --tail 15 2>&1 || echo "no logs")
+          \`\`\`
+          DEBUGEOF
+          )
+          fi
+
+          # Truncate to 60000 chars (GitHub comment limit is 65536)
+          DEBUG="${DEBUG:0:60000}"
+
+          # Write to file for the next step (multi-line output is hard in GITHUB_OUTPUT)
+          echo "$DEBUG" > /tmp/preview-debug.md
+          echo "has_debug=true" >> "$GITHUB_OUTPUT"
+
+      - name: Post debug info to PR
+        if: steps.debug.outputs.has_debug == 'true' && github.event.pull_request.number
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const debug = fs.readFileSync('/tmp/preview-debug.md', 'utf8');
+            const prNumber = context.payload.pull_request.number;
+
+            const body = [
+              `## 🔴 Preview Deploy Failed`,
+              ``,
+              `Health check did not pass for PR #${prNumber}. Debug info below.`,
+              ``,
+              debug,
+              ``,
+              `> To investigate further: \`ssh root@<deploy-ip>\` then \`./preview-status.sh inspect ${process.env.PREVIEW_ID}\``,
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: body.substring(0, 65000),
+            });
+
       # ---- NPM Proxy (HTTPS) ----
       - name: Create HTTPS proxy via Nginx Proxy Manager
         id: proxy
