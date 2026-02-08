@@ -90,6 +90,33 @@ if ! command -v pct &>/dev/null; then
   exit 1
 fi
 
+# ---- Install gh CLI if missing (needed for runner token generation) ----
+if ! command -v gh &>/dev/null; then
+  echo ""
+  echo -e "${YELLOW}GitHub CLI (gh) is not installed on this host.${NC}"
+  echo "You'll need it to generate runner registration tokens."
+  echo ""
+  read -rp "$(echo -e "${CYAN}Install gh CLI now? [Y/n]${NC}: ")" install_gh
+  if [[ "${install_gh,,}" != "n" ]]; then
+    echo "Installing GitHub CLI..."
+    apt-get update -qq
+    apt-get install -y -qq curl gnupg
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      -o /etc/apt/keyrings/githubcli-archive-keyring.gpg
+    chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list
+    apt-get update -qq && apt-get install -y -qq gh
+    echo -e "${GREEN}gh installed: $(gh --version | head -1)${NC}"
+    echo ""
+    echo "Authenticate with: gh auth login"
+    echo "Then get runner tokens with:"
+    echo "  gh api -X POST repos/w-gitops/grocyscan/actions/runners/registration-token --jq .token"
+    echo ""
+  fi
+fi
+
 # ---- Interactive prompts ----
 # Each prompt only fires if the value wasn't already set by a CLI flag.
 
