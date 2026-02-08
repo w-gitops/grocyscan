@@ -232,6 +232,27 @@ else
   NPM_ENABLED="false"
 fi
 
+# ============================================================
+divider "Step 8: Monitoring Tools"
+# ============================================================
+
+DOZZLE_ENABLED=""
+DOZZLE_PORT="8080"
+
+echo "  Optional monitoring tools for the runner LXCs:"
+echo ""
+echo -e "    ${GREEN}Dozzle${NC}       — Web UI for Docker container logs (deploy LXC)"
+echo -e "    ${GREEN}lazydocker${NC}   — CLI dashboard for Docker (deploy LXC)"
+echo -e "    ${GREEN}htop${NC}         — System monitor (both LXCs)"
+echo ""
+read -rp "$(echo -e "  ${CYAN}Install monitoring tools? [Y/n]${NC}: ")" mon_choice
+if [[ "${mon_choice,,}" != "n" ]]; then
+  DOZZLE_ENABLED="true"
+  prompt DOZZLE_PORT "Dozzle web UI port" "8080"
+else
+  DOZZLE_ENABLED="false"
+fi
+
 # ---- Generate passwords ----
 CI_PASSWORD=$(openssl rand -base64 16 2>/dev/null || head -c 16 /dev/urandom | base64)
 DEPLOY_PASSWORD=$(openssl rand -base64 16 2>/dev/null || head -c 16 /dev/urandom | base64)
@@ -262,8 +283,9 @@ echo "    Repo:     ${GITHUB_REPO}"
 echo "    GHCR:     ${GHCR_USER}"
 echo ""
 echo -e "  ${BOLD}Extras:${NC}"
-echo "    Portainer: ${PORTAINER_ENABLED}"
-echo "    NPM:       ${NPM_ENABLED}"
+echo "    Portainer:  ${PORTAINER_ENABLED}"
+echo "    NPM:        ${NPM_ENABLED}"
+echo "    Monitoring: ${DOZZLE_ENABLED}"
 echo ""
 
 read -rp "$(echo -e "${YELLOW}Create both LXCs and configure runners? [Y/n]${NC}: ")" confirm
@@ -546,6 +568,60 @@ if [[ "$NPM_ENABLED" == "true" && -n "$NPM_API_URL" ]]; then
 fi
 
 # ============================================================
+# Monitoring tools
+# ============================================================
+if [[ "$DOZZLE_ENABLED" == "true" ]]; then
+  divider "Installing monitoring tools"
+
+  # ---- htop on both LXCs ----
+  for MON_CTID in "${CI_CTID}" "${DEPLOY_CTID}"; do
+    info "Installing htop in CT ${MON_CTID}..."
+    pct exec "${MON_CTID}" -- apt-get install -y -qq htop 2>&1 | tail -1
+  done
+  ok "htop installed in both LXCs"
+
+  # ---- Dozzle on deploy LXC (Docker log viewer) ----
+  info "Installing Dozzle (Docker log viewer) in CT ${DEPLOY_CTID}..."
+  pct exec "${DEPLOY_CTID}" -- bash -c "
+    docker rm -f dozzle 2>/dev/null || true
+    docker run -d \
+      --name dozzle \
+      --restart unless-stopped \
+      -v /var/run/docker.sock:/var/run/docker.sock:ro \
+      -p ${DOZZLE_PORT}:8080 \
+      amir20/dozzle:latest
+  " 2>&1 | tail -1
+  ok "Dozzle running at http://${DEPLOY_IP}:${DOZZLE_PORT}"
+
+  # ---- lazydocker on deploy LXC (CLI dashboard) ----
+  info "Installing lazydocker in CT ${DEPLOY_CTID}..."
+  pct exec "${DEPLOY_CTID}" -- bash -c "
+    curl -sL https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scripts/install_update_linux.sh | bash 2>&1
+    # Move to /usr/local/bin if installed to home dir
+    if [[ -f /root/.local/bin/lazydocker ]]; then
+      mv /root/.local/bin/lazydocker /usr/local/bin/lazydocker
+    fi
+    # Also install for runner user
+    if [[ -f /usr/local/bin/lazydocker ]]; then
+      chmod +x /usr/local/bin/lazydocker
+    fi
+  " 2>&1 | tail -2
+  ok "lazydocker installed (run: ssh root@${DEPLOY_IP} lazydocker)"
+
+  # ---- lazydocker on CI LXC too if it has Docker ----
+  HAS_DOCKER_CI=$(pct exec "${CI_CTID}" -- bash -c "command -v docker >/dev/null 2>&1 && echo yes || echo no" 2>/dev/null)
+  if [[ "$HAS_DOCKER_CI" == *"yes"* ]]; then
+    info "Installing lazydocker in CT ${CI_CTID}..."
+    pct exec "${CI_CTID}" -- bash -c "
+      curl -sL https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scripts/install_update_linux.sh | bash 2>&1
+      [[ -f /root/.local/bin/lazydocker ]] && mv /root/.local/bin/lazydocker /usr/local/bin/lazydocker
+      chmod +x /usr/local/bin/lazydocker 2>/dev/null || true
+    " 2>&1 | tail -1
+    ok "lazydocker installed in CI LXC"
+  fi
+fi
+
+# ============================================================
 divider "Verifying runners"
 # ============================================================
 
@@ -609,6 +685,14 @@ if [[ "$NPM_ENABLED" == "true" ]]; then
   echo "    API: ${NPM_API_URL}"
   echo "    Staging proxy: dev.grocyscan.ssiops.com → ${DEPLOY_IP}:9000"
   echo "    Preview proxies: created automatically per PR"
+  echo ""
+fi
+
+if [[ "$DOZZLE_ENABLED" == "true" ]]; then
+  echo -e "  ${BOLD}Monitoring:${NC}"
+  echo "    Dozzle (logs):  http://${DEPLOY_IP}:${DOZZLE_PORT}"
+  echo "    lazydocker:     ssh root@${DEPLOY_IP} lazydocker"
+  echo "    htop:           ssh root@<IP> htop"
   echo ""
 fi
 
