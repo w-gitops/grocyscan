@@ -244,13 +244,28 @@ PROXMOX_URL=""
 echo "  Homepage is a self-hosted dashboard that shows all active"
 echo "  previews, staging, production, and tools in one page."
 echo "  Preview stacks auto-appear/disappear via Docker labels."
+echo "  Proxied via NPM for HTTPS access."
 echo ""
 read -rp "$(echo -e "  ${CYAN}Install Homepage dashboard? [Y/n]${NC}: ")" hp_choice
 if [[ "${hp_choice,,}" != "n" ]]; then
   HOMEPAGE_ENABLED="true"
   prompt HOMEPAGE_PORT   "Homepage port" "3010"
-  prompt HOMEPAGE_DOMAIN "Homepage domain (blank to skip NPM proxy)" "ci.grocyscan.ssiops.com"
+  prompt HOMEPAGE_DOMAIN "Homepage HTTPS domain" "ci.grocyscan.ssiops.com"
   prompt PROXMOX_URL     "Proxmox web UI URL" "https://proxmox.local:8006"
+
+  # If NPM wasn't configured yet but Homepage needs a proxy, prompt for NPM now
+  if [[ "$NPM_ENABLED" != "true" && -n "$HOMEPAGE_DOMAIN" ]]; then
+    echo ""
+    echo -e "  ${YELLOW}Homepage HTTPS requires Nginx Proxy Manager.${NC}"
+    read -rp "$(echo -e "  ${CYAN}Configure NPM now? [Y/n]${NC}: ")" npm_late_choice
+    if [[ "${npm_late_choice,,}" != "n" ]]; then
+      NPM_ENABLED="true"
+      prompt       NPM_API_URL      "NPM API URL (e.g. http://192.168.200.10:81)" ""
+      prompt       NPM_API_EMAIL    "NPM admin email" ""
+      prompt_secret NPM_API_PASSWORD "NPM admin password"
+      prompt       NPM_CERT_ID      "Wildcard certificate ID (0 for none)" "0"
+    fi
+  fi
 else
   HOMEPAGE_ENABLED="false"
 fi
@@ -781,11 +796,10 @@ fi
 
 if [[ "$HOMEPAGE_ENABLED" == "true" ]]; then
   echo -e "  ${BOLD}Dashboard:${NC}"
-  if [[ -n "$HOMEPAGE_DOMAIN" && "$NPM_ENABLED" == "true" ]]; then
+  if [[ -n "$HOMEPAGE_DOMAIN" ]]; then
     echo "    Homepage: https://${HOMEPAGE_DOMAIN}"
-  else
-    echo "    Homepage: http://${DEPLOY_IP}:${HOMEPAGE_PORT}"
   fi
+  echo "    HTTP:     http://${DEPLOY_IP}:${HOMEPAGE_PORT}"
   echo "    Previews auto-appear/disappear via Docker labels"
   echo ""
 fi
