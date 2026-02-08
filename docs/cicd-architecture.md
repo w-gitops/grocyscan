@@ -137,56 +137,58 @@ Used by: preview-deploy.yml, preview-cleanup.yml, deploy-dev.yml
 
 ### Setup
 
-#### Step 1: Create LXCs on the Proxmox host
+Both scripts are in the repo but need to run on machines that don't have it
+checked out. Curl them from GitHub (use `dev` or `main` branch).
 
-```bash
-# Run on the Proxmox host (not inside a container)
-
-# Option A: Two LXCs (separate CI and deploy)
-bash infrastructure/create-lxc.sh --profile ci \
-  --ip 192.168.200.50/24 --gw 192.168.200.1
-bash infrastructure/create-lxc.sh --profile deploy \
-  --ip 192.168.200.51/24 --gw 192.168.200.1
-
-# Option B: One combined LXC
-bash infrastructure/create-lxc.sh --profile all \
-  --ip 192.168.200.50/24 --gw 192.168.200.1
+```
+REPO_RAW=https://raw.githubusercontent.com/w-gitops/grocyscan/dev/infrastructure
 ```
 
-#### Step 2: Install the runner (inside each LXC)
+#### Step 1: Create LXCs (run on the Proxmox host)
 
 ```bash
-# Get a runner token
+# Download the LXC provisioner
+curl -sLO https://raw.githubusercontent.com/w-gitops/grocyscan/dev/infrastructure/create-lxc.sh
+chmod +x create-lxc.sh
+
+# CI runner:  CTID 11250, IP .50
+bash create-lxc.sh --profile ci \
+  --ctid 11250 --ip 192.168.200.50/24 --gw 192.168.200.2
+
+# Deploy runner: CTID 11251, IP .51
+bash create-lxc.sh --profile deploy \
+  --ctid 11251 --ip 192.168.200.51/24 --gw 192.168.200.2
+```
+
+#### Step 2: Install the runner (SSH into each LXC)
+
+```bash
+# Get a runner registration token (from any machine with gh CLI)
 gh api -X POST repos/w-gitops/grocyscan/actions/runners/registration-token --jq .token
 
-# SSH into the LXC and run setup
+# --- CI LXC (192.168.200.50) ---
 ssh root@192.168.200.50
-
-# Option A: CI runner
+curl -sLO https://raw.githubusercontent.com/w-gitops/grocyscan/dev/infrastructure/setup-runner.sh
 bash setup-runner.sh \
   --github-url https://github.com/w-gitops/grocyscan \
   --runner-token <TOKEN> \
   --runner-name grocyscan-ci \
   --profile ci
 
-# Option B: Deploy runner
+# --- Deploy LXC (192.168.200.51) ---
+ssh root@192.168.200.51
+curl -sLO https://raw.githubusercontent.com/w-gitops/grocyscan/dev/infrastructure/setup-runner.sh
 bash setup-runner.sh \
   --github-url https://github.com/w-gitops/grocyscan \
   --runner-token <TOKEN> \
   --runner-name grocyscan-deploy \
   --profile deploy
-
-# Option C: Combined
-bash setup-runner.sh \
-  --github-url https://github.com/w-gitops/grocyscan \
-  --runner-token <TOKEN> \
-  --runner-name grocyscan-runner \
-  --profile all
 ```
 
-#### Step 3: Login to GHCR (deploy/all profiles only)
+#### Step 3: Login to GHCR (deploy LXC only)
 
 ```bash
+ssh root@192.168.200.51
 su - runner
 echo $GITHUB_PAT | docker login ghcr.io -u <username> --password-stdin
 ```
