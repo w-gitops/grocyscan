@@ -5,19 +5,14 @@
 # Sets up a Debian 13 LXC (or VM) as a GitHub Actions self-hosted
 # runner. Designed for Proxmox LXCs with nesting enabled.
 #
+# Two modes:
+#   Interactive:  bash setup-runner.sh          (prompts for values)
+#   CLI flags:    bash setup-runner.sh --github-url ... --runner-token ...
+#
 # Profiles:
 #   ci      — Python 3, Node 20, Playwright system deps, pip/npm.
-#              For running pytest + Playwright E2E tests.
-#   deploy  — Docker + Docker Compose only.
-#              For preview deploys and staging. LXC needs nesting+keyctl.
+#   deploy  — Docker + Docker Compose only. LXC needs nesting+keyctl.
 #   all     — Everything (ci + deploy). Default.
-#
-# Usage (inside the LXC):
-#   bash setup-runner.sh \
-#     --github-url https://github.com/w-gitops/grocyscan \
-#     --runner-token <TOKEN> \
-#     --runner-name grocyscan-ci \
-#     --profile ci
 #
 # Runner token:
 #   gh api -X POST repos/w-gitops/grocyscan/actions/runners/registration-token --jq .token
@@ -25,18 +20,31 @@
 
 set -euo pipefail
 
+# ---- Colors ----
+BOLD='\033[1m'
+CYAN='\033[0;36m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+DIM='\033[2m'
+NC='\033[0m'
+
 # ---- Defaults ----
 GITHUB_URL=""
 RUNNER_TOKEN=""
-RUNNER_NAME="grocyscan-runner"
+RUNNER_NAME=""
 RUNNER_LABELS=""
-RUNNER_PROFILE="all"
+RUNNER_PROFILE=""
 RUNNER_USER="runner"
 RUNNER_DIR="/opt/actions-runner"
 RUNNER_VERSION="2.321.0"
 NODE_MAJOR="20"
+INTERACTIVE=false
 
 # ---- Parse Arguments ----
+if [[ $# -eq 0 ]]; then
+  INTERACTIVE=true
+fi
+
 while [[ $# -gt 0 ]]; do
   case $1 in
     --github-url)    GITHUB_URL="$2"; shift 2 ;;
@@ -44,42 +52,176 @@ while [[ $# -gt 0 ]]; do
     --runner-name)   RUNNER_NAME="$2"; shift 2 ;;
     --runner-labels) RUNNER_LABELS="$2"; shift 2 ;;
     --profile)       RUNNER_PROFILE="$2"; shift 2 ;;
+    --runner-user)   RUNNER_USER="$2"; shift 2 ;;
+    -i|--interactive) INTERACTIVE=true; shift ;;
     --help|-h)
-      echo "Usage: $0 --github-url <URL> --runner-token <TOKEN> [options]"
+      echo "Usage: $0 [options]"
+      echo ""
+      echo "Run with no arguments for interactive mode, or pass flags:"
       echo ""
       echo "Options:"
-      echo "  --runner-name   NAME     Runner name (default: grocyscan-runner)"
-      echo "  --runner-labels LABELS   Comma-separated labels (auto-set from profile)"
-      echo "  --profile       PROFILE  ci | deploy | all (default: all)"
+      echo "  --github-url    URL     GitHub repository URL"
+      echo "  --runner-token  TOKEN   Runner registration token"
+      echo "  --runner-name   NAME    Runner name"
+      echo "  --runner-labels LABELS  Comma-separated labels (auto-set from profile)"
+      echo "  --profile       PROF    ci | deploy | all (default: all)"
+      echo "  --runner-user   USER    System user for runner (default: runner)"
+      echo "  -i, --interactive       Force interactive prompts"
       exit 0 ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
 
-if [[ -z "$GITHUB_URL" || -z "$RUNNER_TOKEN" ]]; then
-  echo "ERROR: --github-url and --runner-token are required"
-  exit 1
+# ---- Interactive prompts ----
+prompt() {
+  local var_name="$1"
+  local prompt_text="$2"
+  local default="$3"
+  local current_val="${!var_name}"
+
+  if [[ -n "$current_val" ]]; then
+    return
+  fi
+
+  if [[ -n "$default" ]]; then
+    read -rp "$(echo -e "${CYAN}${prompt_text}${NC} ${DIM}[${default}]${NC}: ")" input
+    eval "${var_name}=\"${input:-$default}\""
+  else
+    read -rp "$(echo -e "${CYAN}${prompt_text}${NC}: ")" input
+    eval "${var_name}=\"${input}\""
+  fi
+}
+
+prompt_secret() {
+  local var_name="$1"
+  local prompt_text="$2"
+  local current_val="${!var_name}"
+
+  if [[ -n "$current_val" ]]; then
+    return
+  fi
+
+  read -srp "$(echo -e "${CYAN}${prompt_text}${NC}: ")" input
+  echo ""
+  eval "${var_name}=\"${input}\""
+}
+
+if [[ "$INTERACTIVE" == true ]] || [[ -z "$GITHUB_URL" ]] || [[ -z "$RUNNER_TOKEN" ]]; then
+  echo ""
+  echo -e "${BOLD}============================================${NC}"
+  echo -e "${BOLD}  GrocyScan — Runner Setup${NC}"
+  echo -e "${BOLD}============================================${NC}"
+  echo -e "  OS: $(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME" || echo "Debian")"
+  echo -e "${BOLD}============================================${NC}"
+  echo ""
+
+  # ---- Profile selection ----
+  if [[ -z "$RUNNER_PROFILE" ]]; then
+    echo -e "${BOLD}Select runner profile:${NC}"
+    echo ""
+    echo -e "  ${GREEN}1)${NC} ci      — Python + Node + Playwright (for tests)"
+    echo -e "  ${GREEN}2)${NC} deploy  — Docker + Compose (for preview/staging deploys)"
+    echo -e "  ${GREEN}3)${NC} all     — Everything (combined runner)"
+    echo ""
+    read -rp "$(echo -e "${CYAN}Profile [1/2/3]${NC} ${DIM}[3]${NC}: ")" profile_choice
+    case "${profile_choice:-3}" in
+      1|ci)     RUNNER_PROFILE="ci" ;;
+      2|deploy) RUNNER_PROFILE="deploy" ;;
+      3|all)    RUNNER_PROFILE="all" ;;
+      *) echo "Invalid choice, using 'all'"; RUNNER_PROFILE="all" ;;
+    esac
+  fi
+  echo ""
+
+  # ---- Default runner name from profile ----
+  DEFAULT_NAME=""
+  case "$RUNNER_PROFILE" in
+    ci)     DEFAULT_NAME="grocyscan-ci" ;;
+    deploy) DEFAULT_NAME="grocyscan-deploy" ;;
+    all)    DEFAULT_NAME="grocyscan-runner" ;;
+  esac
+
+  # ---- GitHub connection ----
+  echo -e "${BOLD}GitHub configuration:${NC}"
+  echo ""
+  prompt       GITHUB_URL   "  Repository URL" "https://github.com/w-gitops/grocyscan"
+  prompt_secret RUNNER_TOKEN "  Runner registration token (from GitHub Settings > Actions > Runners)"
+
+  if [[ -z "$RUNNER_TOKEN" ]]; then
+    echo ""
+    echo -e "${YELLOW}  No token provided. You can get one with:${NC}"
+    echo "  gh api -X POST repos/w-gitops/grocyscan/actions/runners/registration-token --jq .token"
+    echo ""
+    prompt_secret RUNNER_TOKEN "  Runner registration token"
+  fi
+  echo ""
+
+  # ---- Runner identity ----
+  echo -e "${BOLD}Runner settings:${NC}"
+  echo ""
+  prompt RUNNER_NAME "  Runner name" "$DEFAULT_NAME"
+  prompt RUNNER_USER "  System user" "runner"
+  echo ""
+
+  # ---- Labels (optional override) ----
+  echo -e "${BOLD}Labels:${NC} ${DIM}(press Enter for auto-assigned from profile)${NC}"
+  echo ""
+  prompt RUNNER_LABELS "  Custom labels (comma-separated)" ""
+  echo ""
 fi
 
-# Auto-set labels from profile
+# ---- Fill remaining defaults ----
+if [[ -z "$RUNNER_PROFILE" ]]; then
+  RUNNER_PROFILE="all"
+fi
+
+if [[ -z "$RUNNER_NAME" ]]; then
+  case "$RUNNER_PROFILE" in
+    ci)     RUNNER_NAME="grocyscan-ci" ;;
+    deploy) RUNNER_NAME="grocyscan-deploy" ;;
+    all)    RUNNER_NAME="grocyscan-runner" ;;
+  esac
+fi
+
+# Auto-set labels from profile if not provided
 if [[ -z "$RUNNER_LABELS" ]]; then
   case "$RUNNER_PROFILE" in
     ci)     RUNNER_LABELS="self-hosted,linux,x64,proxmox-ci" ;;
     deploy) RUNNER_LABELS="self-hosted,linux,x64,proxmox,preview" ;;
     all)    RUNNER_LABELS="self-hosted,linux,x64,proxmox-ci,proxmox,preview" ;;
-    *) echo "Unknown profile: $RUNNER_PROFILE (use ci, deploy, or all)"; exit 1 ;;
   esac
 fi
 
-echo "============================================"
-echo "  GrocyScan Runner Setup (Debian)"
-echo "============================================"
-echo "  Profile:       $RUNNER_PROFILE"
-echo "  GitHub URL:    $GITHUB_URL"
-echo "  Runner Name:   $RUNNER_NAME"
-echo "  Runner Labels: $RUNNER_LABELS"
-echo "  OS:            $(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME" || echo "Debian")"
-echo "============================================"
+# ---- Final validation ----
+if [[ -z "$GITHUB_URL" ]]; then
+  echo "ERROR: GitHub URL is required (--github-url or interactive)"
+  exit 1
+fi
+if [[ -z "$RUNNER_TOKEN" ]]; then
+  echo "ERROR: Runner token is required (--runner-token or interactive)"
+  exit 1
+fi
+
+# ---- Confirmation ----
+echo -e "${BOLD}============================================${NC}"
+echo -e "${BOLD}  GrocyScan Runner Setup${NC}"
+echo -e "${BOLD}============================================${NC}"
+echo -e "  Profile:       ${GREEN}${RUNNER_PROFILE}${NC}"
+echo -e "  GitHub URL:    ${GITHUB_URL}"
+echo -e "  Runner Name:   ${RUNNER_NAME}"
+echo -e "  Runner Labels: ${RUNNER_LABELS}"
+echo -e "  Runner User:   ${RUNNER_USER}"
+echo -e "  OS:            $(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME" || echo "Debian")"
+echo -e "${BOLD}============================================${NC}"
+
+if [[ "$INTERACTIVE" == true ]]; then
+  echo ""
+  read -rp "$(echo -e "${YELLOW}Proceed with installation? [Y/n]${NC}: ")" confirm
+  if [[ "${confirm,,}" == "n" ]]; then
+    echo "Aborted."
+    exit 0
+  fi
+fi
 
 STEP=0
 step() { STEP=$((STEP + 1)); echo -e "\n>>> [${STEP}] $1"; }
@@ -115,19 +257,16 @@ echo "  gh: $(gh --version | head -1)"
 if [[ "$RUNNER_PROFILE" == "deploy" || "$RUNNER_PROFILE" == "all" ]]; then
   step "Installing Docker..."
 
-  # Check LXC nesting (warn if not enabled)
   if [[ -f /proc/1/status ]] && grep -q "NSpid:" /proc/1/status 2>/dev/null; then
     echo "  Running in container — ensure nesting=1 and keyctl=1 in Proxmox LXC config"
   fi
 
   if ! command -v docker &>/dev/null; then
-    # Docker official install for Debian
     install -m 0755 -d /etc/apt/keyrings
     curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
     chmod a+r /etc/apt/keyrings/docker.asc
 
     CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
-    # Debian 13 (Trixie) may not have Docker repo yet; fall back to bookworm
     if ! curl -sf "https://download.docker.com/linux/debian/dists/${CODENAME}/Release" >/dev/null 2>&1; then
       echo "  Docker repo for ${CODENAME} not available, using bookworm"
       CODENAME="bookworm"
@@ -144,7 +283,6 @@ if [[ "$RUNNER_PROFILE" == "deploy" || "$RUNNER_PROFILE" == "all" ]]; then
   echo "  Docker:  $(docker --version)"
   echo "  Compose: $(docker compose version)"
 
-  # Quick Docker sanity check
   if docker run --rm hello-world >/dev/null 2>&1; then
     echo "  Docker test: OK"
   else
@@ -160,13 +298,9 @@ fi
 if [[ "$RUNNER_PROFILE" == "ci" || "$RUNNER_PROFILE" == "all" ]]; then
   step "Installing Python 3..."
 
-  # Debian 13 ships Python 3.12+ natively
   apt-get install -y -qq \
     python3 python3-venv python3-dev python3-pip python3-full
 
-  # Debian 13 enforces PEP 668 (externally-managed). The runner user
-  # will use --break-system-packages or venvs. For CI simplicity we
-  # allow global pip installs.
   PYTHON_INSTALL_DIR=$(python3 -c "import sysconfig; print(sysconfig.get_path('stdlib'))")
   EXTERN_MARKER="${PYTHON_INSTALL_DIR}/EXTERNALLY-MANAGED"
   if [[ -f "$EXTERN_MARKER" ]]; then
@@ -194,7 +328,6 @@ if [[ "$RUNNER_PROFILE" == "ci" || "$RUNNER_PROFILE" == "all" ]]; then
 
   # ---- Playwright system dependencies ----
   step "Installing Playwright browser dependencies..."
-  # Chromium's runtime shared library requirements on Debian
   apt-get install -y -qq \
     libnss3 libnspr4 libatk1.0-0t64 libatk-bridge2.0-0t64 \
     libcups2t64 libdrm2 libxkbcommon0 libxcomposite1 \
@@ -203,7 +336,6 @@ if [[ "$RUNNER_PROFILE" == "ci" || "$RUNNER_PROFILE" == "all" ]]; then
     fonts-liberation fonts-noto-color-emoji \
     xvfb \
     2>/dev/null || {
-      # Fallback: Debian 12 package names (without t64 suffix)
       apt-get install -y -qq \
         libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
         libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
@@ -227,7 +359,6 @@ else
   echo "  User $RUNNER_USER already exists"
 fi
 
-# Docker group
 if command -v docker &>/dev/null; then
   usermod -aG docker "$RUNNER_USER"
   echo "  Added $RUNNER_USER to docker group"
@@ -254,8 +385,6 @@ if [[ ! -f "$RUNNER_TAR" ]]; then
 fi
 tar xzf "$RUNNER_TAR"
 
-# The runner has its own bundled dotnet and node — install any missing
-# native deps it needs (ICU for .NET globalization)
 apt-get install -y -qq libicu-dev 2>/dev/null || true
 
 chown -R "$RUNNER_USER:$RUNNER_USER" "$RUNNER_DIR"
@@ -282,9 +411,9 @@ cd "$RUNNER_DIR"
 # Done
 # ============================================================
 echo ""
-echo "============================================"
-echo "  Runner Setup Complete!"
-echo "============================================"
+echo -e "${BOLD}============================================${NC}"
+echo -e "${GREEN}  Runner Setup Complete!${NC}"
+echo -e "${BOLD}============================================${NC}"
 echo ""
 echo "  Profile:       $RUNNER_PROFILE"
 echo "  Runner Name:   $RUNNER_NAME"
