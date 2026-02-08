@@ -1,0 +1,246 @@
+name: Deploy to Production
+
+# Deploy to the production server when code is merged to main.
+# Uses bare install (rsync + systemd) as primary method — fast, no Docker
+# overhead on the production server.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      method:
+        description: "Deployment method"
+        required: false
+        default: "bare"
+        type: choice
+        options:
+          - bare
+          - docker
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Build frontend in CI so the artifact is tested and reproducible
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Build
+        run: npm run build
+        working-directory: frontend
+        env:
+          NODE_ENV: production
+
+      - name: Upload frontend dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          retention-days: 7
+
+  # Primary: bare install via rsync + systemd
+  deploy-bare:
+    name: Deploy (bare install)
+    needs: build-frontend
+    if: github.event.inputs.method != 'docker'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://grocyscan.ssiops.com
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download frontend dist
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # Accept host key
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST || '192.168.200.37' }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Sync application code
+        run: |
+          REMOTE="${{ secrets.DEPLOY_USER || 'root' }}@${{ secrets.DEPLOY_HOST || '192.168.200.37' }}"
+          REMOTE_PATH="/opt/grocyscan"
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
+
+          echo "Syncing code to ${REMOTE}:${REMOTE_PATH}..."
+          rsync -avz --delete \
+            --exclude '__pycache__' \
+            --exclude '*.pyc' \
+            --exclude '.git' \
+            --exclude 'venv' \
+            --exclude '.env' \
+            --exclude 'tests' \
+            --exclude '.cursor' \
+            --exclude '.ralph' \
+            --exclude 'prd' \
+            --exclude 'docker' \
+            --exclude 'infrastructure' \
+            --exclude 'docs' \
+            --exclude 'frontend/node_modules' \
+            --exclude 'frontend/src' \
+            --exclude 'frontend/tests' \
+            --exclude 'frontend/public' \
+            --exclude 'frontend/.vscode' \
+            --exclude 'frontend/playwright.config.js' \
+            --exclude 'frontend/vite.config.js' \
+            --exclude 'frontend/index.html' \
+            --exclude 'frontend/package*.json' \
+            --exclude 'frontend/README.md' \
+            -e "ssh ${SSH_OPTS}" \
+            ./ "${REMOTE}:${REMOTE_PATH}/"
+
+      - name: Sync frontend dist
+        run: |
+          REMOTE="${{ secrets.DEPLOY_USER || 'root' }}@${{ secrets.DEPLOY_HOST || '192.168.200.37' }}"
+          REMOTE_PATH="/opt/grocyscan"
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
+
+          ssh ${SSH_OPTS} "${REMOTE}" "mkdir -p ${REMOTE_PATH}/frontend"
+          rsync -avz \
+            -e "ssh ${SSH_OPTS}" \
+            frontend/dist/ "${REMOTE}:${REMOTE_PATH}/frontend/dist/"
+
+      - name: Install deps, migrate, restart
+        run: |
+          REMOTE="${{ secrets.DEPLOY_USER || 'root' }}@${{ secrets.DEPLOY_HOST || '192.168.200.37' }}"
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
+
+          ssh ${SSH_OPTS} "${REMOTE}" << 'DEPLOY'
+            set -e
+            cd /opt/grocyscan
+
+            # Install/update Python dependencies
+            ./venv/bin/pip install -q -r requirements.txt
+
+            # Run database migrations
+            ./venv/bin/alembic upgrade head
+
+            # Restart service
+            systemctl restart grocyscan
+
+            # Wait for service
+            sleep 3
+          DEPLOY
+
+      - name: Health check
+        run: |
+          REMOTE="${{ secrets.DEPLOY_USER || 'root' }}@${{ secrets.DEPLOY_HOST || '192.168.200.37' }}"
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
+
+          HEALTH=$(ssh ${SSH_OPTS} "${REMOTE}" "curl -sf http://localhost:3334/health 2>/dev/null || curl -sf http://localhost:3334/api/health 2>/dev/null" || echo "FAILED")
+
+          if [[ "$HEALTH" == "FAILED" ]]; then
+            echo "::error::Health check failed!"
+            ssh ${SSH_OPTS} "${REMOTE}" "journalctl -u grocyscan -n 30 --no-pager" || true
+            exit 1
+          fi
+
+          echo "Production healthy: ${HEALTH}"
+
+      - name: Post deployment summary
+        if: always()
+        run: |
+          SHA=$(echo "${{ github.sha }}" | head -c 8)
+          echo "### Production Deployment" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| | |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Method** | Bare install (rsync + systemd) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Commit** | \`${SHA}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Status** | ${{ job.status }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **URL** | https://grocyscan.ssiops.com |" >> "$GITHUB_STEP_SUMMARY"
+
+  # Alternative: Docker deployment (manual dispatch only)
+  deploy-docker:
+    name: Deploy (Docker)
+    needs: build-frontend
+    if: github.event.inputs.method == 'docker'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://grocyscan.ssiops.com
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push production image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST || '192.168.200.37' }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Deploy via Docker
+        run: |
+          REMOTE="${{ secrets.DEPLOY_USER || 'root' }}@${{ secrets.DEPLOY_HOST || '192.168.200.37' }}"
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+
+          ssh ${SSH_OPTS} "${REMOTE}" << DEPLOY
+            set -e
+            cd /opt/grocyscan-docker
+            docker pull "${IMAGE}"
+            sed -i "s|^GROCYSCAN_IMAGE=.*|GROCYSCAN_IMAGE=${IMAGE}|" .env 2>/dev/null || echo "GROCYSCAN_IMAGE=${IMAGE}" >> .env
+            docker compose pull
+            docker compose up -d --wait --timeout 120
+            docker compose exec -T app python -m alembic upgrade head
+            sleep 5
+            curl -sf http://localhost:3334/health || { echo "Health check failed!"; exit 1; }
+          DEPLOY

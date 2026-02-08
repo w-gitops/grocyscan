@@ -1,0 +1,48 @@
+# GrocyScan — Homepage Dashboard
+# Central landing page for all CI/CD environments, previews, and tools.
+#
+# Preview stacks auto-appear via Docker labels (no config changes needed).
+# Static services (production, staging, tools) are in homepage/services.yaml.
+#
+# Environment variables (set by bootstrap or .env):
+#   HOMEPAGE_PORT               - Host port (default: 3010)
+#   HOMEPAGE_VAR_PROD_URL       - Production URL
+#   HOMEPAGE_VAR_PROD_HEALTH_URL - Production health endpoint (internal)
+#   HOMEPAGE_VAR_STAGING_URL    - Staging URL
+#   HOMEPAGE_VAR_GITHUB_URL     - GitHub repo URL
+#   HOMEPAGE_VAR_DEPLOY_IP      - Deploy runner IP
+#   HOMEPAGE_VAR_DOZZLE_PORT    - Dozzle port
+#   HOMEPAGE_VAR_PORTAINER_URL  - Portainer URL
+#   HOMEPAGE_VAR_NPM_URL        - NPM URL
+#   HOMEPAGE_VAR_PROXMOX_URL    - Proxmox URL
+#
+# Usage:
+#   docker compose -f docker-compose.homepage.yml up -d
+
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: grocyscan-homepage
+    restart: unless-stopped
+    ports:
+      - "${HOMEPAGE_PORT:-3010}:3000"
+    volumes:
+      # Config files (mounted read-only — edit on host, restart to reload)
+      - ./homepage/settings.yaml:/app/config/settings.yaml:ro
+      - ./homepage/services.yaml:/app/config/services.yaml:ro
+      - ./homepage/docker.yaml:/app/config/docker.yaml:ro
+      - ./homepage/widgets.yaml:/app/config/widgets.yaml:ro
+      - ./homepage/bookmarks.yaml:/app/config/bookmarks.yaml:ro
+      # Docker socket for container auto-discovery
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      # These are interpolated into services.yaml via {{HOMEPAGE_VAR_*}}
+      - HOMEPAGE_VAR_PROD_URL=${HOMEPAGE_VAR_PROD_URL:-https://grocyscan.ssiops.com}
+      - HOMEPAGE_VAR_PROD_HEALTH_URL=${HOMEPAGE_VAR_PROD_HEALTH_URL:-http://192.168.200.37:3334/health}
+      - HOMEPAGE_VAR_STAGING_URL=${HOMEPAGE_VAR_STAGING_URL:-https://dev.grocyscan.ssiops.com}
+      - HOMEPAGE_VAR_GITHUB_URL=${HOMEPAGE_VAR_GITHUB_URL:-https://github.com/w-gitops/grocyscan}
+      - HOMEPAGE_VAR_DEPLOY_IP=${HOMEPAGE_VAR_DEPLOY_IP:-localhost}
+      - HOMEPAGE_VAR_DOZZLE_PORT=${HOMEPAGE_VAR_DOZZLE_PORT:-8080}
+      - HOMEPAGE_VAR_PORTAINER_URL=${HOMEPAGE_VAR_PORTAINER_URL:-}
+      - HOMEPAGE_VAR_NPM_URL=${HOMEPAGE_VAR_NPM_URL:-}
+      - HOMEPAGE_VAR_PROXMOX_URL=${HOMEPAGE_VAR_PROXMOX_URL:-https://proxmox.local:8006}

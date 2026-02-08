@@ -1,9 +1,32 @@
 name: Build and Push Docker Image
 
+# Build the multi-stage Docker image and push to GHCR.
+# - Push to dev  → tagged :dev + :sha
+# - Push to main → tagged :latest + :sha + :date
+# - PR events    → build-only validation (no push)
+
 on:
   push:
-    branches:
-      - main
+    branches: [dev, main]
+    paths:
+      - 'app/**'
+      - 'frontend/**'
+      - 'migrations/**'
+      - 'requirements*.txt'
+      - 'docker/Dockerfile'
+      - 'alembic.ini'
+      - 'pyproject.toml'
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - 'app/**'
+      - 'frontend/**'
+      - 'migrations/**'
+      - 'requirements*.txt'
+      - 'docker/Dockerfile'
+      - 'alembic.ini'
+      - 'pyproject.toml'
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -34,24 +57,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
+      - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # Set latest tag for default branch
-            type=raw,value=latest,enable={{is_default_branch}}
-            # Tag with branch name
+            # :latest only on main
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            # :dev only on dev branch
+            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' }}
+            # Branch name
             type=ref,event=branch
-            # Tag with PR number
+            # PR number
             type=ref,event=pr
-            # Tag with semver
+            # Semver tags
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            # Tag with short SHA
+            # Short SHA (always)
             type=sha,prefix=
+            # Date tag on main for rollback identification
+            type=raw,value={{date 'YYYYMMDD-HHmmss'}},enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5

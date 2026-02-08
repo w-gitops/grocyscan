@@ -1,0 +1,125 @@
+name: Preview Cleanup
+
+# Tear down preview environments when a PR is closed (merged or not).
+# Also removes the Nginx Proxy Manager HTTPS proxy entry.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [dev, main]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to clean up"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+  pull-requests: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  PREVIEW_DOMAIN_SUFFIX: preview.grocyscan.ssiops.com
+
+jobs:
+  cleanup:
+    name: Cleanup Preview
+    runs-on: [self-hosted, linux, proxmox]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute preview ID and domain
+        id: preview
+        run: |
+          PR_NUM="${{ github.event.pull_request.number || github.event.inputs.pr_number }}"
+          PREVIEW_ID="pr-${PR_NUM}"
+          DOMAIN="pr-${PR_NUM}.${{ env.PREVIEW_DOMAIN_SUFFIX }}"
+          echo "id=${PREVIEW_ID}" >> "$GITHUB_OUTPUT"
+          echo "pr_num=${PR_NUM}" >> "$GITHUB_OUTPUT"
+          echo "domain=${DOMAIN}" >> "$GITHUB_OUTPUT"
+          echo "Cleaning up: ${PREVIEW_ID} (${DOMAIN})"
+
+      # ---- Remove NPM proxy ----
+      - name: Delete HTTPS proxy from Nginx Proxy Manager
+        if: env.NPM_API_URL != ''
+        env:
+          NPM_API_URL: ${{ secrets.NPM_API_URL }}
+          NPM_API_EMAIL: ${{ secrets.NPM_API_EMAIL }}
+          NPM_API_PASSWORD: ${{ secrets.NPM_API_PASSWORD }}
+        run: |
+          bash scripts/npm-proxy.sh delete "${{ steps.preview.outputs.domain }}" || true
+
+      # ---- Stop Docker stack ----
+      - name: Stop preview stack
+        run: |
+          PREVIEW_ID="${{ steps.preview.outputs.id }}"
+
+          if docker compose -p "grocyscan-${PREVIEW_ID}" ps --quiet 2>/dev/null | head -1; then
+            echo "Stopping stack grocyscan-${PREVIEW_ID}..."
+            docker compose \
+              -f docker/docker-compose.preview.yml \
+              -p "grocyscan-${PREVIEW_ID}" \
+              down --remove-orphans --volumes --timeout 30
+          else
+            echo "No running stack found for grocyscan-${PREVIEW_ID}"
+          fi
+
+          # Clean up orphaned containers
+          for container in $(docker ps -a --filter "name=grocyscan-${PREVIEW_ID}" --format '{{.Names}}' 2>/dev/null); do
+            echo "Removing orphaned container: ${container}"
+            docker rm -f "${container}" 2>/dev/null || true
+          done
+
+      - name: Remove preview image
+        run: |
+          PR_NUM="${{ steps.preview.outputs.pr_num }}"
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${PR_NUM}"
+          docker rmi "${IMAGE}" 2>/dev/null || echo "Image not found locally"
+
+      - name: Prune unused resources
+        run: docker system prune -f --filter "until=24h" 2>/dev/null || true
+
+      - name: Comment on PR
+        if: github.event.pull_request.number
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const merged = context.payload.pull_request.merged;
+            const status = merged ? '✅ Merged' : '❌ Closed';
+
+            const body = [
+              `## 🧹 Preview Cleaned Up`,
+              ``,
+              `Preview environment for PR #${prNumber} has been destroyed.`,
+              ``,
+              `| | |`,
+              `|---|---|`,
+              `| **PR Status** | ${status} |`,
+              `| **Proxy** | Removed |`,
+              `| **Containers** | Removed |`,
+            ].join('\n');
+
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            const existing = comments.data.find(c =>
+              c.body.includes('## 🚀 Preview Deployment') &&
+              c.user.type === 'Bot'
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            }

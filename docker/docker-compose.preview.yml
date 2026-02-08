@@ -1,0 +1,99 @@
+# GrocyScan Preview Environment
+# Deployed per-PR by GitHub Actions on the self-hosted Proxmox runner.
+#
+# Environment variables (set by the workflow):
+#   GROCYSCAN_IMAGE  - GHCR image tag (e.g. ghcr.io/w-gitops/grocyscan:pr-42)
+#   PREVIEW_PORT     - Host port for the API (e.g. 10042)
+#   PREVIEW_ID       - Unique ID for this preview (e.g. pr-42)
+#   POSTGRES_PORT    - Host port for Postgres (e.g. 15042) — optional, for debugging
+#
+# Usage:
+#   PREVIEW_ID=pr-42 PREVIEW_PORT=10042 GROCYSCAN_IMAGE=ghcr.io/w-gitops/grocyscan:pr-42 \
+#     docker compose -f docker-compose.preview.yml -p grocyscan-pr-42 up -d
+
+services:
+  app:
+    image: ${GROCYSCAN_IMAGE:?GROCYSCAN_IMAGE is required}
+    container_name: grocyscan-${PREVIEW_ID:-preview}
+    restart: unless-stopped
+    ports:
+      - "${PREVIEW_PORT:-10099}:3334"
+    environment:
+      - GROCYSCAN_ENV=preview
+      - GROCYSCAN_DEBUG=true
+      - DATABASE_URL=postgresql+asyncpg://grocyscan:grocyscan@postgres:5432/grocyscan
+      - REDIS_URL=redis://redis:6379/0
+      - AUTH_USERNAME=admin
+      - AUTH_PASSWORD_HASH=${AUTH_PASSWORD_HASH:-}
+      - APP_TITLE=HomeBot (Preview ${PREVIEW_ID:-})
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - preview-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3334/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 5
+    labels:
+      - "homepage.group=Previews"
+      - "homepage.name=${PREVIEW_ID:-preview}"
+      - "homepage.icon=docker"
+      - "homepage.href=https://${PREVIEW_ID:-preview}.preview.grocyscan.ssiops.com"
+      - "homepage.description=Port ${PREVIEW_PORT:-10099}"
+      - "homepage.widget.type=customapi"
+      - "homepage.widget.url=http://grocyscan-${PREVIEW_ID:-preview}:3334/health"
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: grocyscan-${PREVIEW_ID:-preview}-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=grocyscan
+      - POSTGRES_PASSWORD=grocyscan
+      - POSTGRES_DB=grocyscan
+    ports:
+      - "${POSTGRES_PORT:-15099}:5432"
+    networks:
+      - preview-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U grocyscan"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # No persistent volume — preview data is ephemeral
+    tmpfs:
+      - /var/lib/postgresql/data
+    labels:
+      - "homepage.group=Previews"
+      - "homepage.name=${PREVIEW_ID:-preview} DB"
+      - "homepage.icon=postgres"
+      - "homepage.description=Postgres 17"
+
+  redis:
+    image: redis:7-alpine
+    container_name: grocyscan-${PREVIEW_ID:-preview}-redis
+    restart: unless-stopped
+    command: redis-server --appendonly no
+    networks:
+      - preview-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    tmpfs:
+      - /data
+    labels:
+      - "homepage.group=Previews"
+      - "homepage.name=${PREVIEW_ID:-preview} Cache"
+      - "homepage.icon=redis"
+      - "homepage.description=Redis 7"
+
+networks:
+  preview-net:
+    driver: bridge

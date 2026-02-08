@@ -1,0 +1,52 @@
+# Git
+.git
+.gitignore
+
+# IDE & editor
+.cursor
+.ralph
+.vscode
+*.swp
+*.swo
+
+# Documentation
+docs/
+prd/
+*.md
+!README.md
+
+# Docker (prevent recursive copy)
+docker/
+
+# Infrastructure
+infrastructure/
+
+# Tests (not needed in production image)
+tests/
+
+# Python artifacts
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+htmlcov/
+.coverage
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Frontend dev (built in Docker, not copied from host)
+frontend/node_modules
+frontend/tests
+frontend/playwright-report
+frontend/test-results
+frontend/.vscode
+
+# OS files
+.DS_Store
+Thumbs.db

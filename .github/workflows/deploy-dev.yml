@@ -1,0 +1,116 @@
+name: Deploy to Staging (dev)
+
+# Deploy the dev branch to a persistent staging environment on Proxmox.
+# Uses Docker Compose with a fixed port and NPM proxy for HTTPS.
+#
+# Staging URL: https://dev.grocyscan.ssiops.com (via NPM proxy)
+# Fallback:    http://<runner-ip>:9000
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  STAGING_PORT: 9000
+  STAGING_PG_PORT: 9001
+  STAGING_ID: dev-staging
+  STAGING_DOMAIN: dev.grocyscan.ssiops.com
+
+jobs:
+  deploy:
+    name: Deploy Staging
+    runs-on: [self-hosted, linux, proxmox]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Pull dev image
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev"
+          docker pull "$IMAGE"
+          echo "IMAGE=${IMAGE}" >> "$GITHUB_ENV"
+
+      - name: Generate auth password hash
+        id: auth
+        run: |
+          HASH=$(docker run --rm "${IMAGE}" \
+            python -c "from app.services.auth import hash_password; print(hash_password('test'))" 2>/dev/null || echo "")
+          echo "hash=${HASH}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy staging stack
+        env:
+          GROCYSCAN_IMAGE: ${{ env.IMAGE }}
+          PREVIEW_ID: ${{ env.STAGING_ID }}
+          PREVIEW_PORT: ${{ env.STAGING_PORT }}
+          POSTGRES_PORT: ${{ env.STAGING_PG_PORT }}
+          AUTH_PASSWORD_HASH: ${{ steps.auth.outputs.hash }}
+        run: |
+          # Re-use the preview compose file with fixed staging params
+          docker compose \
+            -f docker/docker-compose.preview.yml \
+            -p "grocyscan-${STAGING_ID}" \
+            down --remove-orphans 2>/dev/null || true
+
+          docker compose \
+            -f docker/docker-compose.preview.yml \
+            -p "grocyscan-${STAGING_ID}" \
+            up -d --wait --timeout 120
+
+      - name: Run migrations
+        run: |
+          docker exec "grocyscan-${STAGING_ID}" \
+            python -m alembic upgrade head
+
+      - name: Health check
+        run: |
+          for i in $(seq 1 30); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${{ env.STAGING_PORT }}/health" 2>/dev/null || echo "000")
+            if [[ "$STATUS" == "200" ]]; then
+              echo "Staging healthy on port ${{ env.STAGING_PORT }}"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "WARNING: Health check timed out"
+
+      # ---- NPM Proxy (HTTPS) ----
+      - name: Ensure HTTPS proxy for staging
+        if: env.NPM_API_URL != ''
+        env:
+          NPM_API_URL: ${{ secrets.NPM_API_URL }}
+          NPM_API_EMAIL: ${{ secrets.NPM_API_EMAIL }}
+          NPM_API_PASSWORD: ${{ secrets.NPM_API_PASSWORD }}
+          NPM_CERT_ID: ${{ secrets.NPM_CERT_ID }}
+        run: |
+          RUNNER_IP=$(hostname -I | awk '{print $1}')
+          bash scripts/npm-proxy.sh create \
+            "${{ env.STAGING_DOMAIN }}" \
+            "${RUNNER_IP}" \
+            "${{ env.STAGING_PORT }}" || echo "NPM proxy creation failed — staging available via HTTP only"
+
+      - name: Summary
+        run: |
+          RUNNER_IP=$(hostname -I | awk '{print $1}')
+          SHA=$(echo "${{ github.sha }}" | head -c 8)
+          echo "============================================"
+          echo "  Staging deployed"
+          echo "  HTTPS: https://${{ env.STAGING_DOMAIN }}"
+          echo "  HTTP:  http://${RUNNER_IP}:${{ env.STAGING_PORT }}"
+          echo "  Commit: ${SHA}"
+          echo "  Creds: admin / test"
+          echo "============================================"

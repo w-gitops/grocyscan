@@ -1,0 +1,53 @@
+---
+# Static services — always shown.
+# Preview containers are auto-discovered via Docker labels.
+
+- Environments:
+    - Production:
+        icon: mdi-server
+        href: "{{HOMEPAGE_VAR_PROD_URL}}"
+        description: "main branch — bare install"
+        widget:
+          type: customapi
+          url: "{{HOMEPAGE_VAR_PROD_HEALTH_URL}}"
+          method: GET
+          mappings:
+            - field: status
+              label: Status
+            - field: version
+              label: Version
+    - Staging:
+        icon: mdi-flask
+        href: "{{HOMEPAGE_VAR_STAGING_URL}}"
+        description: "dev branch — Docker :dev"
+        widget:
+          type: customapi
+          url: "http://localhost:9000/health"
+          method: GET
+          mappings:
+            - field: status
+              label: Status
+            - field: version
+              label: Version
+    - GitHub:
+        icon: github
+        href: "{{HOMEPAGE_VAR_GITHUB_URL}}"
+        description: "Repository & Actions"
+
+- Tools:
+    - Dozzle:
+        icon: dozzle
+        href: "http://{{HOMEPAGE_VAR_DEPLOY_IP}}:{{HOMEPAGE_VAR_DOZZLE_PORT}}"
+        description: Docker log viewer
+    - Portainer:
+        icon: portainer
+        href: "{{HOMEPAGE_VAR_PORTAINER_URL}}"
+        description: Container management
+    - Nginx Proxy Manager:
+        icon: nginx-proxy-manager
+        href: "{{HOMEPAGE_VAR_NPM_URL}}"
+        description: HTTPS proxy
+    - Proxmox:
+        icon: proxmox
+        href: "{{HOMEPAGE_VAR_PROXMOX_URL}}"
+        description: VM/LXC management

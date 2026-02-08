@@ -1,78 +1,101 @@
 ---
-description: GrocyScan development workflow - local development with remote deployment and testing
+description: GrocyScan development workflow — branching, deployment, and testing
 alwaysApply: true
 ---
 
 # GrocyScan Development Workflow
 
-This project uses a **local development + remote deployment** workflow. Code changes are made locally and deployed to a remote development server for testing.
+## Branching Model
 
-## Branch and sync standard
+```
+feature/* ──PR──► dev ──PR──► main
+```
 
-- **Starting work**: If you are on `main`, create and switch to a feature branch before making changes. If already on a feature branch, use it.
-- **Before pushing**: Always `git fetch origin` and pull/rebase your current branch so you have the latest remote state.
-- **Before pushing**: If `origin/main` has new commits, merge (or rebase onto) `origin/main` into your branch, resolve conflicts, then push. This reduces merge conflicts when multiple agents merge to main asynchronously.
+- **Feature branches** always PR into `dev`
+- **`dev`** is the integration/staging branch
+- **`main`** is production — only receives merges from `dev`
+- Never push directly to `main` or `dev`
+
+### Branch and Sync Standard
+
+- **Starting work**: Create a feature branch from `dev` (not `main`).
+- **Before pushing**: `git fetch origin` and pull/rebase your branch.
+- **Before pushing**: If `origin/dev` has new commits, merge or rebase onto `origin/dev`.
+- **PRs**: Always target `dev` unless you're promoting `dev` → `main`.
 
 ## Server Details
 
-- **Remote Server**: `192.168.200.37` (SSH as `root`)
-- **Install Path**: `/opt/grocyscan/`
-- **Service Name**: `grocyscan` (systemd)
-- **Local URL**: `http://localhost:3334`
+- **Production**: `192.168.200.37` (SSH as `root`) — bare install, systemd
+- **Staging**: `https://dev.grocyscan.ssiops.com` — Docker on Proxmox runner
+- **Previews**: `https://pr-N.preview.grocyscan.ssiops.com` — Docker per PR
+- **Local Dev**: `http://localhost:3334` (API) / `:3335` (Vue dev)
 - **Public URL**: `https://grocyscan.ssiops.com`
 
 ## Deployment Process
 
-### 1. Make Changes Locally
+### For Feature Work (Cloud or Desktop)
 
-Edit files in `c:\git\grocyscan\` as normal.
+1. Create a feature branch from `dev`
+2. Make changes, commit, push
+3. Open a PR targeting `dev`
+4. CI runs: pytest + Playwright (self-hosted), Docker build, preview deploy
+5. Preview URL appears as PR comment (HTTPS via NPM)
+6. Review, iterate, merge to `dev`
 
-### 2. Deploy to Remote Server
+### For Production Release
 
-Use PowerShell pipe to transfer files:
+1. Open a PR from `dev` → `main`
+2. CI validates the merge
+3. Merge triggers bare-install deploy to production
+4. Health check verifies deployment
 
-```powershell
-# Single file
-type "c:\git\grocyscan\app\path\to\file.py" | ssh root@192.168.200.37 "cat > /opt/grocyscan/app/path/to/file.py"
+### Direct Deploy (Desktop Agents — Local Network)
 
-# Multiple files - run in parallel
+```bash
+./scripts/cursor-deploy.sh deploy    # Auto-detects environment
+./scripts/deploy.sh                  # Full rsync + systemd deploy
 ```
 
-### 3. Restart Service
-
 ```powershell
+# Single file hot-deploy
+type "app\path\to\file.py" | ssh root@192.168.200.37 "cat > /opt/grocyscan/app/path/to/file.py"
 ssh root@192.168.200.37 "systemctl restart grocyscan && sleep 3"
 ```
 
-### 4. Test Changes
+### CI Deploy (Cloud Agents — No Local Network)
 
-- **API endpoints**: Use `curl` via SSH
-- **UI pages**: Check HTTP status codes or test manually at the public URL
-- **Logs**: `ssh root@192.168.200.37 "journalctl -u grocyscan -n 50 --no-pager"`
-
-## Common Patterns
-
-### Deploy and Restart in One Command
-
-```powershell
-type "c:\git\grocyscan\app\file.py" | ssh root@192.168.200.37 "cat > /opt/grocyscan/app/file.py && systemctl restart grocyscan && sleep 3"
+```bash
+git push -u origin <branch>
+gh pr create --base dev --title "..." --body "..."
+gh run list --branch <branch>             # Check CI status
+gh pr view --json comments                # Get preview URL
 ```
 
-### Test an API Endpoint
+## Testing
 
-```powershell
+### Automated (on every PR)
+- **Pytest**: Self-hosted runner with Postgres + Redis services
+- **Playwright E2E**: Self-hosted runner with bare Python/Node/Chromium
+
+### Manual
+```bash
+# API endpoints (via SSH)
 ssh root@192.168.200.37 "curl -s http://localhost:3334/api/endpoint | python3 -m json.tool"
-```
 
-### Run a Python Script on Server
+# View logs
+ssh root@192.168.200.37 "journalctl -u grocyscan -n 50 --no-pager"
 
-```powershell
-type "c:\git\grocyscan\scripts\test.py" | ssh root@192.168.200.37 "cat > /opt/grocyscan/scripts/test.py && cd /opt/grocyscan && /opt/grocyscan/venv/bin/python scripts/test.py"
+# CI logs (cloud agents)
+gh run view --log
 ```
 
 ## Important Notes
 
-1. **Always deploy before testing** - The remote server runs the code, not your local machine
-2. **Restart after Python changes** - The service needs restart for code changes to take effect
-3. **Check logs on errors** - Use `journalctl` to see Python tracebacks
-4. **Commit after verification** - Only commit once changes are tested and working on the server
+1. **PRs target `dev`** — Feature branches never PR directly into `main`
+2. **Deploy before testing** — Remote server runs the code, not your local machine
+3. **Restart after Python changes** — systemd service needs restart for code changes
+4. **Check logs on errors** — `journalctl` for production, `gh run view --log` for CI
+5. **Commit after verification** — Only commit once changes work
+6. **CI runs on self-hosted** — Pytest and Playwright use Proxmox runners by default
+7. **Previews are HTTPS** — Each PR gets `https://pr-N.preview.grocyscan.ssiops.com`
+8. **Production deploys on main** — Merging to main triggers bare-install deploy

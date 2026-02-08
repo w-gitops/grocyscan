@@ -1,0 +1,15 @@
+---
+title: GrocyScan CI/CD
+theme: dark
+color: slate
+headerStyle: clean
+layout:
+  Environments:
+    style: row
+    columns: 3
+  Previews:
+    style: row
+    columns: 4
+  Tools:
+    style: row
+    columns: 4
